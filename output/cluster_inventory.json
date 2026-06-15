@@ -11,6 +11,7 @@
         "Metrics Server",
         "ETCD"
     ],
+    "mode": "local",
     "applications": [
         {
             "name": "calico-apiserver",

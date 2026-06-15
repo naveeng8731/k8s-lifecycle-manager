@@ -370,7 +370,7 @@ def print_upgrade_summary(original_version, target_version, completed, failed_at
 # -------------------------
 # EXECUTION ENGINE
 # -------------------------
-def execute_upgrade(plan, nodes):
+def execute_upgrade(plan, nodes, mode="local"):
 
     print("\n======================================")
     print(" PRODUCTION UPGRADE EXECUTOR")
