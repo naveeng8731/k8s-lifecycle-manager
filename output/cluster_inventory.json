@@ -1,7 +1,7 @@
 {
     "control_planes": 1,
     "workers": 0,
-    "cluster_version": "v1.35.0",
+    "cluster_version": "v1.36.2",
     "namespace_count": 8,
     "crd_count": 32,
     "storage_class_count": 0,
@@ -57,8 +57,8 @@
         {
             "name": "coredns",
             "namespace": "kube-system",
-            "image": "registry.k8s.io/coredns/coredns:v1.13.1",
-            "version": "v1.13.1"
+            "image": "registry.k8s.io/coredns/coredns:v1.14.2",
+            "version": "v1.14.2"
         },
         {
             "name": "metrics-server",
@@ -93,8 +93,8 @@
         {
             "name": "kube-proxy",
             "namespace": "kube-system",
-            "image": "registry.k8s.io/kube-proxy:v1.35.0",
-            "version": "v1.35.0"
+            "image": "registry.k8s.io/kube-proxy:v1.36.2",
+            "version": "v1.36.2"
         },
         {
             "name": "nginx-statefulset",
@@ -153,9 +153,9 @@
         },
         {
             "component": "coredns",
-            "current": "v1.13.1",
+            "current": "v1.14.2",
             "status": "PASS",
-            "recommended": "v1.13.1"
+            "recommended": "v1.14.2"
         },
         {
             "component": "metrics-server",
@@ -189,9 +189,9 @@
         },
         {
             "component": "kube-proxy",
-            "current": "v1.35.0",
+            "current": "v1.36.2",
             "status": "PASS",
-            "recommended": "v1.35.0"
+            "recommended": "v1.36.2"
         },
         {
             "component": "nginx-statefulset",
@@ -201,112 +201,6 @@
         }
     ],
     "health": "HEALTHY",
-    "current_version": "v1.35.0",
-    "stable_version": "v1.36.2",
-    "dependency_report": [
-        {
-            "component": "calico-apiserver",
-            "current_version": "v3.30.3",
-            "status": "VERSION COMPATIBILITY REQUIRED"
-        },
-        {
-            "component": "calico-kube-controllers",
-            "current_version": "v3.30.3",
-            "status": "VERSION COMPATIBILITY REQUIRED"
-        },
-        {
-            "component": "calico-typha",
-            "current_version": "v3.30.3",
-            "status": "VERSION COMPATIBILITY REQUIRED"
-        },
-        {
-            "component": "goldmane",
-            "current_version": "v3.30.3",
-            "status": "SAFE"
-        },
-        {
-            "component": "whisker",
-            "current_version": "v3.30.3",
-            "status": "SAFE"
-        },
-        {
-            "component": "nginx-deployment",
-            "current_version": "1.28",
-            "status": "SAFE"
-        },
-        {
-            "component": "ingress-nginx-controller",
-            "current_version": "v1.15.1",
-            "status": "CHECK API VERSION COMPATIBILITY"
-        },
-        {
-            "component": "coredns",
-            "current_version": "v1.13.1",
-            "status": "SAFE"
-        },
-        {
-            "component": "metrics-server",
-            "current_version": "v0.8.1",
-            "status": "MINOR UPGRADE REQUIRED"
-        },
-        {
-            "component": "tigera-operator",
-            "current_version": "v1.38.6",
-            "status": "SAFE"
-        },
-        {
-            "component": "calico-node",
-            "current_version": "v3.30.3",
-            "status": "VERSION COMPATIBILITY REQUIRED"
-        },
-        {
-            "component": "csi-node-driver",
-            "current_version": "v3.30.3",
-            "status": "SAFE"
-        },
-        {
-            "component": "nginx-daemonset",
-            "current_version": "1.25",
-            "status": "SAFE"
-        },
-        {
-            "component": "kube-proxy",
-            "current_version": "v1.35.0",
-            "status": "CRITICAL - upgrade with control plane"
-        },
-        {
-            "component": "nginx-statefulset",
-            "current_version": "1.25",
-            "status": "SAFE"
-        }
-    ],
-    "upgrade_plan": {
-        "eligible": true,
-        "risk_score": 110,
-        "current_version": "v1.35.0",
-        "target_version": "v1.36.2",
-        "phases": [
-            {
-                "phase": "Upgrade to v1.36.0",
-                "actions": [
-                    "cordon nodes",
-                    "drain nodes",
-                    "kubeadm upgrade apply v1.36.0",
-                    "uncordon nodes",
-                    "validate cluster"
-                ]
-            },
-            {
-                "phase": "Upgrade to v1.36.2",
-                "actions": [
-                    "cordon nodes",
-                    "drain nodes",
-                    "kubeadm upgrade apply v1.36.2",
-                    "uncordon nodes",
-                    "validate cluster"
-                ]
-            }
-        ],
-        "blockers": []
-    }
+    "current_version": "v1.36.2",
+    "stable_version": "v1.36.2"
 }
