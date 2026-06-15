@@ -1,46 +1,35 @@
 ---
+# ─────────────────────────────────────────────────────────
+# Kubernetes Precheck Playbook
+# Supports both LOCAL and REMOTE modes
+# ─────────────────────────────────────────────────────────
+
 - name: Kubernetes Precheck
-  hosts: localhost
-  connection: local
+  hosts: all
   gather_facts: false
 
   tasks:
 
-    # -------------------------
-    # Nodes
-    # -------------------------
     - name: Get Nodes
       shell: kubectl get nodes -o json
       register: nodes
       ignore_errors: yes
 
-    # -------------------------
-    # Pods
-    # -------------------------
     - name: Get Pods
       shell: kubectl get pods -A -o json
       register: pods
       ignore_errors: yes
 
-    # -------------------------
-    # Events
-    # -------------------------
     - name: Get Events
       shell: kubectl get events -A -o json
       register: events
       ignore_errors: yes
 
-    # -------------------------
-    # Upgrade Plan (FIXED)
-    # -------------------------
     - name: Get Upgrade Plan
       shell: sudo kubeadm upgrade plan
       register: upgrade_plan
       ignore_errors: yes
 
-    # -------------------------
-    # Save Precheck Data (FIXED SAFE JSON)
-    # -------------------------
     - name: Save Precheck Data
       copy:
         dest: "{{ playbook_dir }}/../output/precheck_raw.json"
@@ -51,3 +40,4 @@
             "events": {{ events.stdout | default('{}') | to_json }},
             "upgrade_plan": {{ upgrade_plan.stdout | default('') | to_json }}
           }
+      delegate_to: localhost

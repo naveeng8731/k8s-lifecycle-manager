@@ -1,7 +1,14 @@
 ---
+# ─────────────────────────────────────────────────────────
+# Kubernetes Discovery Playbook
+# Supports both LOCAL and REMOTE modes
+#
+# Local mode : runs kubectl directly on the cluster node
+# Remote mode: runs kubectl on the remote server via SSH
+# ─────────────────────────────────────────────────────────
+
 - name: Kubernetes Discovery
-  hosts: localhost
-  connection: local
+  hosts: all
   gather_facts: false
 
   tasks:
@@ -11,6 +18,7 @@
         path: "{{ playbook_dir }}/../output"
         state: directory
         mode: "0755"
+      delegate_to: localhost
 
     - name: Cluster Version
       shell: kubectl version -o json
@@ -61,6 +69,7 @@
       shell: kubectl get statefulset -A -o json
       register: statefulsets
       ignore_errors: yes
+
     - name: Save Raw Data
       copy:
         dest: "{{ playbook_dir }}/../output/discovery_raw.json"
@@ -77,4 +86,4 @@
             "daemonsets": {{ daemonsets.stdout | default('{}') }},
             "statefulsets": {{ statefulsets.stdout | default('{}') }}
           }
-
+      delegate_to: localhost

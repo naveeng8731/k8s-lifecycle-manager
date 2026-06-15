@@ -1,11 +1,11 @@
+# ─────────────────────────────────────────────────────────
+# k8s-lifecycle-manager configuration
+# ─────────────────────────────────────────────────────────
+
 report_path: reports
-
 output_path: output
-
 backup_path: backups
-
 log_path: logs
-
 cluster_inventory_file: output/cluster_inventory.json
 
 health_threshold:
@@ -16,3 +16,32 @@ discovery:
   detect_helm: true
   detect_ingress: true
   detect_storage: true
+
+# ─────────────────────────────────────────────────────────
+# REMOTE CONNECTION SETTINGS
+# Used when running from local machine (--mode remote)
+# ─────────────────────────────────────────────────────────
+remote:
+  # IP or hostname of the Kubernetes control plane node
+  host: 192.168.115.3
+
+  # SSH user on the remote server
+  user: ubuntu
+
+  # Path to your SSH private key
+  # Windows : C:/Users/yourname/.ssh/id_rsa
+  # Linux   : ~/.ssh/id_rsa
+  # Mac     : ~/.ssh/id_rsa
+  ssh_key: ~/.ssh/id_rsa
+
+  # Path to kubeconfig on the REMOTE server
+  remote_kubeconfig: /home/ubuntu/.kube/config
+
+  # Path to save kubeconfig locally (fetched from remote)
+  # Windows : C:/Users/yourname/.kube/remote-config
+  # Linux   : ~/.kube/remote-config
+  # Mac     : ~/.kube/remote-config
+  local_kubeconfig: ~/.kube/remote-config
+
+  # SSH port (default 22)
+  port: 22
