@@ -44,8 +44,8 @@
     {
         "name": "coredns",
         "namespace": "kube-system",
-        "image": "registry.k8s.io/coredns/coredns:v1.12.1",
-        "version": "v1.12.1"
+        "image": "registry.k8s.io/coredns/coredns:v1.13.1",
+        "version": "v1.13.1"
     },
     {
         "name": "metrics-server",
@@ -80,8 +80,8 @@
     {
         "name": "kube-proxy",
         "namespace": "kube-system",
-        "image": "registry.k8s.io/kube-proxy:v1.34.8",
-        "version": "v1.34.8"
+        "image": "registry.k8s.io/kube-proxy:v1.35.0",
+        "version": "v1.35.0"
     },
     {
         "name": "nginx-statefulset",

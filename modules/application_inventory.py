@@ -22,6 +22,7 @@ def extract_version(image):
 
     return "latest"
 
+
 def get_application_inventory():
 
     with open("output/discovery_raw.json") as f:
@@ -37,9 +38,7 @@ def get_application_inventory():
         try:
 
             name = item["metadata"]["name"]
-
             namespace = item["metadata"]["namespace"]
-
             image = item["spec"]["template"]["spec"]["containers"][0]["image"]
 
             applications.append({
@@ -49,8 +48,10 @@ def get_application_inventory():
                 "version": extract_version(image)
             })
 
-        except:
-            pass
+        except Exception as e:
+            # FIX: log skipped items instead of silently swallowing errors
+            name = item.get("metadata", {}).get("name", "unknown")
+            print(f"  WARNING: skipping deployment '{name}': {e}")
 
     #
     # Daemonsets
@@ -60,9 +61,7 @@ def get_application_inventory():
         try:
 
             name = item["metadata"]["name"]
-
             namespace = item["metadata"]["namespace"]
-
             image = item["spec"]["template"]["spec"]["containers"][0]["image"]
 
             applications.append({
@@ -72,8 +71,10 @@ def get_application_inventory():
                 "version": extract_version(image)
             })
 
-        except:
-            pass
+        except Exception as e:
+            # FIX: log skipped items instead of silently swallowing errors
+            name = item.get("metadata", {}).get("name", "unknown")
+            print(f"  WARNING: skipping daemonset '{name}': {e}")
 
     #
     # Statefulsets
@@ -83,9 +84,7 @@ def get_application_inventory():
         try:
 
             name = item["metadata"]["name"]
-
             namespace = item["metadata"]["namespace"]
-
             image = item["spec"]["template"]["spec"]["containers"][0]["image"]
 
             applications.append({
@@ -95,7 +94,10 @@ def get_application_inventory():
                 "version": extract_version(image)
             })
 
-        except:
-            pass
+        except Exception as e:
+            # FIX: log skipped items instead of silently swallowing errors
+            name = item.get("metadata", {}).get("name", "unknown")
+            print(f"  WARNING: skipping statefulset '{name}': {e}")
 
     return applications
+

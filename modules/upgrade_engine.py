@@ -1,15 +1,25 @@
 from modules.version_manager import get_upgrade_information
-from packaging.version import Version
 
 
-def _v(v):
-    return Version(v.replace("v", ""))
+# -------------------------
+# VERSION HELPERS
+# No external libraries - pure Python
+# -------------------------
+def _parse(v):
+    """Parse 'v1.30.2' or '1.30.2' → (1, 30, 2)"""
+    v = v.strip().lstrip("v")
+    parts = v.split(".")
+    return tuple(int(x) for x in parts[:3])
 
 
-def _fmt(v):
-    return f"v{v.major}.{v.minor}.{v.micro}"
+def _fmt(t):
+    """Format (1, 30, 2) → 'v1.30.2'"""
+    return f"v{t[0]}.{t[1]}.{t[2]}"
 
 
+# -------------------------
+# BUILD UPGRADE PLAN
+# -------------------------
 def build_upgrade_plan(inventory, compatibility, risks):
 
     version_info = get_upgrade_information()
@@ -25,8 +35,16 @@ def build_upgrade_plan(inventory, compatibility, risks):
             "blockers": ["Missing version information"]
         }
 
-    current_v = _v(current)
-    stable_v = _v(stable)
+    try:
+        current_v = _parse(current)
+        stable_v = _parse(stable)
+    except Exception as e:
+        return {
+            "eligible": False,
+            "risk_score": 999,
+            "phases": [],
+            "blockers": [f"Version parse error: {e}"]
+        }
 
     if current_v >= stable_v:
         return {
@@ -42,13 +60,20 @@ def build_upgrade_plan(inventory, compatibility, risks):
 
     # -------------------------
     # SAFE UPGRADE RULE
-    # minor only steps
+    # Step one minor version at a time (k8s upgrade policy)
+    # FIX: use a step counter to prevent any infinite loop
     # -------------------------
-    while temp < stable_v:
+    max_steps = 20
+    steps = 0
 
-        next_minor = Version(f"{temp.major}.{temp.minor + 1}.0")
+    while temp < stable_v and steps < max_steps:
 
-        if next_minor > stable_v:
+        steps += 1
+
+        next_minor = (temp[0], temp[1] + 1, 0)
+
+        if next_minor >= stable_v:
+            # Final step — go exactly to stable
             next_step = stable_v
         else:
             next_step = next_minor
@@ -64,7 +89,12 @@ def build_upgrade_plan(inventory, compatibility, risks):
             ]
         })
 
+        # FIX: always advance temp to avoid infinite loop
         temp = next_step
+
+        # If we've reached stable, stop
+        if temp >= stable_v:
+            break
 
     risk_score = 50 + len(risks) * 5 + len(compatibility) * 3
 

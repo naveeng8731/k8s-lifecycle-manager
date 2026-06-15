@@ -1,20 +1,22 @@
 import subprocess
-import re
+import json
 import requests
 
 
 def get_current_version():
     try:
+        # FIX: --short was removed in Kubernetes 1.28+, use --output=json instead
         out = subprocess.run(
-            ["kubectl", "version", "--short"],
+            ["kubectl", "version", "--output=json"],
             capture_output=True,
             text=True
         ).stdout
 
-        match = re.search(r"Server Version:\s*v(\d+\.\d+\.\d+)", out)
-        return f"v{match.group(1)}" if match else None
+        data = json.loads(out)
+        return data["serverVersion"]["gitVersion"]
 
-    except:
+    except Exception as e:
+        print(f"  WARNING: could not get current k8s version: {e}")
         return None
 
 
@@ -24,7 +26,8 @@ def get_stable_version():
         url = "https://dl.k8s.io/release/stable.txt"
         return requests.get(url, timeout=5).text.strip()
 
-    except:
+    except Exception as e:
+        print(f"  WARNING: could not fetch stable version: {e}")
         return None
 
 
@@ -38,3 +41,4 @@ def get_upgrade_information():
         "stable_version": stable,
         "upgrade_available": current != stable if current and stable else False
     }
+
