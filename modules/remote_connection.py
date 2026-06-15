@@ -2,7 +2,6 @@ import subprocess
 import os
 import sys
 import platform
-import shutil
 import yaml
 
 
@@ -15,9 +14,8 @@ import yaml
 # What it does:
 #   1. Reads connection config from config/settings.yaml
 #   2. Tests SSH connectivity to the remote server
-#   3. Fetches kubeconfig from remote server to local machine
-#   4. Sets KUBECONFIG env var so kubectl works locally
-#   5. Tests kubectl connectivity to the remote cluster
+#   3. Runs all kubectl/kubeadm commands ON THE REMOTE SERVER
+#      via Ansible SSH — no kubectl needed on local machine
 # ─────────────────────────────────────────────────────────
 
 
@@ -46,62 +44,53 @@ def get_platform():
 def expand_path(path):
     """
     Expand ~ and env vars cross-platform.
-    Windows: C:/Users/name/.ssh/id_rsa  or  ~/.ssh/id_rsa
-    Linux/Mac: ~/.ssh/id_rsa
+    Windows : C:/Users/name/.ssh/id_rsa  OR  ~/.ssh/id_rsa
+    Linux   : ~/.ssh/id_rsa
+    Mac     : ~/.ssh/id_rsa
     """
     path = os.path.expanduser(path)
     path = os.path.expandvars(path)
-    # Normalize separators on Windows
     path = os.path.normpath(path)
     return path
 
 
-def get_ssh_cmd(config):
-    """
-    Build base SSH command for current platform.
-    Uses 'ssh' on Linux/Mac, tries 'ssh' first on Windows
-    (works with Git Bash, WSL, OpenSSH).
-    """
-    host     = config.get("host")
-    user     = config.get("user")
-    ssh_key  = expand_path(config.get("ssh_key", "~/.ssh/id_rsa"))
-    port     = config.get("port", 22)
-
-    cmd = [
-        "ssh",
-        "-i", ssh_key,
-        "-p", str(port),
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "ConnectTimeout=10",
-        f"{user}@{host}"
-    ]
-    return cmd
-
-
+# ─────────────────────────────────────────────────────────
+# TEST SSH CONNECTION
+# Simple check — can we reach the remote server?
+# ─────────────────────────────────────────────────────────
 def test_ssh_connection(config):
-    """Test SSH connection to remote server"""
 
-    host = config.get("host")
-    user = config.get("user")
-    port = config.get("port", 22)
+    host    = config.get("host")
+    user    = config.get("user")
+    port    = config.get("port", 22)
     ssh_key = expand_path(config.get("ssh_key", "~/.ssh/id_rsa"))
 
-    print(f"\n[INFO] Testing SSH connection...")
+    print(f"\n[INFO] Testing SSH connection to remote server...")
     print(f"  Host     : {host}")
     print(f"  User     : {user}")
     print(f"  Port     : {port}")
     print(f"  SSH Key  : {ssh_key}")
     print(f"  Platform : {get_platform()}\n")
 
-    # Check SSH key exists
+    # Check SSH key file exists on local machine
     if not os.path.exists(ssh_key):
         raise Exception(
-            f"SSH key not found: {ssh_key}\n"
-            f"  Generate one with: ssh-keygen -t rsa -b 4096\n"
-            f"  Then copy to server: ssh-copy-id -i {ssh_key} {user}@{host}"
+            f"SSH key not found on your local machine: {ssh_key}\n"
+            f"\n  Generate one with:"
+            f"\n    ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa"
+            f"\n\n  Copy it to the server:"
+            f"\n    ssh-copy-id -i ~/.ssh/id_rsa.pub {user}@{host}"
         )
 
-    ssh_cmd = get_ssh_cmd(config) + ["echo 'SSH_OK'"]
+    ssh_cmd = [
+        "ssh",
+        "-i", ssh_key,
+        "-p", str(port),
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "ConnectTimeout=10",
+        f"{user}@{host}",
+        "echo SSH_OK"
+    ]
 
     result = subprocess.run(
         ssh_cmd,
@@ -113,133 +102,129 @@ def test_ssh_connection(config):
     if result.returncode != 0 or "SSH_OK" not in result.stdout:
         raise Exception(
             f"SSH connection failed to {user}@{host}:{port}\n"
-            f"  Error: {result.stderr.strip()}\n"
-            f"  Check:\n"
-            f"    1. Server is reachable: ping {host}\n"
-            f"    2. SSH key is authorized on server\n"
-            f"    3. Run manually: ssh -i {ssh_key} {user}@{host}"
+            f"  Error : {result.stderr.strip()}\n"
+            f"\n  Check:"
+            f"\n    1. Server is reachable   : ping {host}"
+            f"\n    2. SSH key is on server  : ssh-copy-id -i {ssh_key}.pub {user}@{host}"
+            f"\n    3. Test manually         : ssh -i {ssh_key} {user}@{host}"
         )
 
-    print(f"  ✔ SSH connection successful to {user}@{host}")
+    print(f"  ✔ SSH connection successful → {user}@{host}")
 
 
-def fetch_kubeconfig(config):
-    """
-    Fetch kubeconfig from remote server to local machine.
-    Uses SCP (works on Linux/Mac/Windows with OpenSSH).
-    """
+# ─────────────────────────────────────────────────────────
+# GET CLUSTER VERSION FROM REMOTE SERVER
+# Runs kubectl on the REMOTE server via SSH
+# No kubectl needed on local machine
+# ─────────────────────────────────────────────────────────
+def get_remote_cluster_version(config):
 
-    host              = config.get("host")
-    user              = config.get("user")
-    port              = config.get("port", 22)
-    ssh_key           = expand_path(config.get("ssh_key", "~/.ssh/id_rsa"))
-    remote_kubeconfig = config.get("remote_kubeconfig", "/home/ubuntu/.kube/config")
-    local_kubeconfig  = expand_path(config.get("local_kubeconfig", "~/.kube/remote-config"))
+    host    = config.get("host")
+    user    = config.get("user")
+    port    = config.get("port", 22)
+    ssh_key = expand_path(config.get("ssh_key", "~/.ssh/id_rsa"))
 
-    # Create local .kube dir if not exists
-    local_kube_dir = os.path.dirname(local_kubeconfig)
-    os.makedirs(local_kube_dir, exist_ok=True)
+    print(f"\n[INFO] Fetching cluster version from remote server...")
 
-    print(f"\n[INFO] Fetching kubeconfig from remote server...")
-    print(f"  Remote : {user}@{host}:{remote_kubeconfig}")
-    print(f"  Local  : {local_kubeconfig}\n")
-
-    scp_cmd = [
-        "scp",
+    ssh_cmd = [
+        "ssh",
         "-i", ssh_key,
-        "-P", str(port),
+        "-p", str(port),
         "-o", "StrictHostKeyChecking=no",
-        f"{user}@{host}:{remote_kubeconfig}",
-        local_kubeconfig
+        f"{user}@{host}",
+        "kubectl version --output=json 2>/dev/null || echo KUBECTL_ERROR"
     ]
 
-    result = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=30)
-
-    if result.returncode != 0:
-        raise Exception(
-            f"Failed to fetch kubeconfig from {host}:{remote_kubeconfig}\n"
-            f"  Error: {result.stderr.strip()}\n"
-            f"  Make sure kubeconfig exists on server at: {remote_kubeconfig}"
-        )
-
-    # Fix server address in kubeconfig if it points to localhost/127.0.0.1
-    # Replace it with the actual remote host IP
-    fix_kubeconfig_server(local_kubeconfig, host)
-
-    print(f"  ✔ kubeconfig saved to: {local_kubeconfig}")
-    return local_kubeconfig
-
-
-def fix_kubeconfig_server(kubeconfig_path, remote_host):
-    """
-    Replace 127.0.0.1 or localhost in kubeconfig server URL
-    with the actual remote host IP so kubectl works from local machine.
-    """
-    with open(kubeconfig_path, "r") as f:
-        content = f.read()
-
-    original = content
-    content = content.replace("https://127.0.0.1:", f"https://{remote_host}:")
-    content = content.replace("https://localhost:", f"https://{remote_host}:")
-
-    if content != original:
-        with open(kubeconfig_path, "w") as f:
-            f.write(content)
-        print(f"  [INFO] Updated kubeconfig server address → {remote_host}")
-
-
-def set_kubeconfig_env(local_kubeconfig):
-    """
-    Set KUBECONFIG environment variable so kubectl
-    uses the remote cluster config.
-    """
-    os.environ["KUBECONFIG"] = local_kubeconfig
-    print(f"\n  [INFO] KUBECONFIG set to: {local_kubeconfig}")
-
-
-def test_kubectl_remote(config):
-    """Test that kubectl can reach the remote cluster"""
-
-    host = config.get("host")
-    port = config.get("port", 22)
-
-    print(f"\n[INFO] Testing kubectl connectivity to remote cluster ({host})...")
-
-    # Check port 6443 is open first
     result = subprocess.run(
-        f"kubectl cluster-info --request-timeout=10s",
-        shell=True,
+        ssh_cmd,
         capture_output=True,
         text=True,
         timeout=15
     )
 
+    if "KUBECTL_ERROR" in result.stdout or result.returncode != 0:
+        return None
+
+    try:
+        import json
+        data = json.loads(result.stdout)
+        version = data.get("serverVersion", {}).get("gitVersion")
+        if version:
+            print(f"  ✔ Remote cluster version: {version}")
+        return version
+    except Exception:
+        return None
+
+
+# ─────────────────────────────────────────────────────────
+# GET NODE LIST FROM REMOTE SERVER
+# Runs kubectl on the REMOTE server via SSH
+# ─────────────────────────────────────────────────────────
+def get_remote_nodes(config):
+
+    host    = config.get("host")
+    user    = config.get("user")
+    port    = config.get("port", 22)
+    ssh_key = expand_path(config.get("ssh_key", "~/.ssh/id_rsa"))
+
+    print(f"\n[INFO] Fetching node list from remote server...\n")
+
+    ssh_cmd = [
+        "ssh",
+        "-i", ssh_key,
+        "-p", str(port),
+        "-o", "StrictHostKeyChecking=no",
+        f"{user}@{host}",
+        "kubectl get nodes -o wide"
+    ]
+
+    subprocess.run(ssh_cmd)
+
+
+# ─────────────────────────────────────────────────────────
+# CHECK REMOTE CLUSTER STATE
+# Runs detection ON THE SERVER via SSH
+# ─────────────────────────────────────────────────────────
+def check_remote_cluster_state(config):
+
+    host    = config.get("host")
+    user    = config.get("user")
+    port    = config.get("port", 22)
+    ssh_key = expand_path(config.get("ssh_key", "~/.ssh/id_rsa"))
+
+    print(f"\n[INFO] Checking cluster state on remote server ({host})...\n")
+
+    # Check kubectl exists on remote
+    ssh_cmd = [
+        "ssh", "-i", ssh_key, "-p", str(port),
+        "-o", "StrictHostKeyChecking=no",
+        f"{user}@{host}",
+        "which kubectl && kubectl cluster-info --request-timeout=5s && kubectl get nodes --no-headers | wc -l"
+    ]
+
+    result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=20)
+
     if result.returncode != 0:
-        raise Exception(
-            f"kubectl cannot reach cluster at {host}:6443\n"
-            f"  Error: {result.stderr.strip()}\n"
-            f"  Check:\n"
-            f"    1. Port 6443 is open on {host}\n"
-            f"    2. kubeconfig server address is correct\n"
-            f"    3. Try: kubectl --kubeconfig={os.environ.get('KUBECONFIG')} get nodes"
-        )
+        return "NOT_REACHABLE"
 
-    print(f"  ✔ kubectl connected to remote cluster at {host}")
-
-    # Show nodes
-    subprocess.run("kubectl get nodes -o wide", shell=True)
+    try:
+        lines = result.stdout.strip().split("\n")
+        node_count = int(lines[-1].strip())
+        if node_count > 0:
+            return "HEALTHY"
+        return "NO_NODES"
+    except Exception:
+        return "UNKNOWN"
 
 
+# ─────────────────────────────────────────────────────────
+# FULL REMOTE SETUP
+# 1. Load config
+# 2. Test SSH
+# 3. Check remote cluster state
+# 4. Show remote node list
+# ─────────────────────────────────────────────────────────
 def setup_remote_connection():
-    """
-    Full setup flow:
-    1. Load config
-    2. Test SSH
-    3. Fetch kubeconfig
-    4. Set env var
-    5. Test kubectl
-    Returns the local kubeconfig path
-    """
 
     print("\n======================================")
     print(" Remote Connection Setup")
@@ -262,91 +247,81 @@ def setup_remote_connection():
     # Step 1: Test SSH
     test_ssh_connection(config)
 
-    # Step 2: Fetch kubeconfig
-    local_kubeconfig = fetch_kubeconfig(config)
+    # Step 2: Check cluster state on remote server
+    state = check_remote_cluster_state(config)
 
-    # Step 3: Set env var
-    set_kubeconfig_env(local_kubeconfig)
+    print(f"\n  Remote Cluster State : {state}")
 
-    # Step 4: Test kubectl
-    test_kubectl_remote(config)
+    if state == "NOT_REACHABLE":
+        raise Exception(
+            "Cluster is not reachable on the remote server.\n"
+            "  Check kubectl is installed and cluster is running on the server."
+        )
 
-    print("\n  ✔ Remote connection fully established\n")
-    return local_kubeconfig
+    # Step 3: Show nodes
+    get_remote_nodes(config)
+
+    print("\n  ✔ Remote connection established\n")
+    return config
 
 
+# ─────────────────────────────────────────────────────────
+# PRINT LOCAL MACHINE SETUP INSTRUCTIONS
+# Shown when --setup flag is used
+# ─────────────────────────────────────────────────────────
 def print_local_setup_instructions():
-    """
-    Print setup instructions for local machine based on OS.
-    Shown when --mode remote is used for the first time.
-    """
 
     os_type = get_platform()
 
     print("\n======================================")
-    print(" Local Machine Setup Requirements")
+    print(" Local Machine Setup — Remote Mode")
     print("======================================\n")
 
-    print("  The following tools must be installed on YOUR local machine:\n")
+    print("  You only need these 3 things on your local machine:\n")
+    print("  ┌─────────────────────────────────────────────────┐")
+    print("  │  1. Python 3.8+                                  │")
+    print("  │  2. Ansible                                      │")
+    print("  │  3. pip packages: requests, pyyaml               │")
+    print("  └─────────────────────────────────────────────────┘\n")
+    print("  ✔ kubectl  → NOT needed (runs on remote server)")
+    print("  ✔ kubeadm  → NOT needed (runs on remote server)")
+    print("  ✔ kubelet  → NOT needed (runs on remote server)\n")
 
     if os_type == "windows":
-        print("  WINDOWS:")
-        print("  ─────────────────────────────────────")
-        print("  1. Python 3.8+")
-        print("     https://www.python.org/downloads/")
-        print()
-        print("  2. kubectl")
-        print("     winget install -e --id Kubernetes.kubectl")
-        print("     OR: https://kubernetes.io/docs/tasks/tools/install-kubectl-windows/")
-        print()
-        print("  3. Ansible (via WSL or Git Bash recommended)")
-        print("     WSL: sudo apt install ansible")
-        print("     pip: pip install ansible")
-        print()
-        print("  4. OpenSSH Client (usually pre-installed on Windows 10/11)")
-        print("     Settings → Apps → Optional Features → OpenSSH Client")
-        print()
-        print("  5. pip packages:")
-        print("     pip install requests pyyaml")
+        print("  ── WINDOWS INSTALL STEPS ──────────────────────────\n")
+        print("  Step 1: Install Python 3.8+")
+        print("    https://www.python.org/downloads/")
+        print("    ✔ Check 'Add Python to PATH' during install\n")
+        print("  Step 2: Install Ansible + pip packages")
+        print("    Open Command Prompt or PowerShell:")
+        print("    pip install ansible requests pyyaml\n")
+        print("  Step 3: SSH Client (already installed on Windows 10/11)")
+        print("    If not: Settings → Apps → Optional Features → OpenSSH Client\n")
+        print("  Step 4: Generate SSH key and copy to server")
+        print("    ssh-keygen -t rsa -b 4096")
+        print("    ssh-copy-id ubuntu@<server-ip>\n")
 
     elif os_type == "mac":
-        print("  macOS:")
-        print("  ─────────────────────────────────────")
-        print("  1. Python 3.8+  (usually pre-installed)")
-        print("     brew install python3")
-        print()
-        print("  2. kubectl")
-        print("     brew install kubectl")
-        print()
-        print("  3. Ansible")
-        print("     brew install ansible")
-        print("     OR: pip3 install ansible")
-        print()
-        print("  4. pip packages:")
-        print("     pip3 install requests pyyaml")
+        print("  ── MAC INSTALL STEPS ───────────────────────────────\n")
+        print("  Step 1: Install Python + Ansible")
+        print("    brew install python3 ansible\n")
+        print("  Step 2: Install pip packages")
+        print("    pip3 install requests pyyaml\n")
+        print("  Step 3: SSH key")
+        print("    ssh-keygen -t rsa -b 4096")
+        print("    ssh-copy-id ubuntu@<server-ip>\n")
 
     else:
-        print("  LINUX:")
-        print("  ─────────────────────────────────────")
-        print("  1. Python 3.8+")
-        print("     sudo apt install python3 python3-pip   # Ubuntu/Debian")
-        print("     sudo yum install python3               # RHEL/CentOS")
-        print()
-        print("  2. kubectl")
-        print("     curl -LO https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl")
-        print("     sudo install kubectl /usr/local/bin/")
-        print()
-        print("  3. Ansible")
-        print("     sudo apt install ansible")
-        print("     OR: pip3 install ansible")
-        print()
-        print("  4. pip packages:")
-        print("     pip3 install requests pyyaml")
+        print("  ── LINUX INSTALL STEPS ─────────────────────────────\n")
+        print("  Step 1: Install Python + Ansible")
+        print("    sudo apt install python3 python3-pip ansible -y\n")
+        print("  Step 2: Install pip packages")
+        print("    pip3 install requests pyyaml\n")
+        print("  Step 3: SSH key")
+        print("    ssh-keygen -t rsa -b 4096")
+        print("    ssh-copy-id ubuntu@<server-ip>\n")
 
-    print()
-    print("  AFTER INSTALLING:")
-    print("  ─────────────────────────────────────")
-    print("  1. Edit config/settings.yaml → set remote.host, remote.user, remote.ssh_key")
-    print("  2. Edit inventory/hosts.ini  → set your server IP and SSH details")
-    print("  3. Run: python3 run.py --mode remote")
-    print()
+    print("  ── THEN RUN ────────────────────────────────────────\n")
+    print("  Edit config/settings.yaml  → set host, user, ssh_key")
+    print("  Edit inventory/hosts.ini   → set server IP")
+    print("  python3 run.py --mode remote\n")
