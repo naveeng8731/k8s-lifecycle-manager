@@ -128,7 +128,7 @@ It is not a Kubernetes tool — it just reads config files.
 
 ```yaml
 remote:
-  host: 192.168.115.3        # IP address of your Kubernetes server
+  host: 192.168.22.20        # IP address of your Kubernetes server
   user: ubuntu               # SSH username on the server
   ssh_key: ~/.ssh/id_rsa     # path to your SSH private key on your laptop
   port: 22                   # SSH port (default: 22)
@@ -139,7 +139,7 @@ remote:
 
 ```ini
 [k8s_cluster]
-devdc3 ansible_host=192.168.115.3 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
+devdc3 ansible_host=192.168.22.20 ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa
 ```
 
 ---
@@ -151,7 +151,7 @@ Your Laptop (Windows / Linux / Mac)       Remote Linux Server
 ───────────────────────────────────       ──────────────────────────────
 python3 run.py --mode remote
   reads config/settings.yaml
-  tests SSH connection           ──SSH──► ubuntu@192.168.115.3
+  tests SSH connection           ──SSH──► ubuntu@192.168.22.20
   runs Ansible playbooks         ──SSH──► kubectl get nodes   ← runs HERE
                                  ──SSH──► kubectl version     ← runs HERE
                                  ──SSH──► kubeadm upgrade     ← runs HERE
