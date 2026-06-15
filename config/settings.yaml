@@ -1,0 +1,18 @@
+report_path: reports
+
+output_path: output
+
+backup_path: backups
+
+log_path: logs
+
+cluster_inventory_file: output/cluster_inventory.json
+
+health_threshold:
+  pod_restart_limit: 10
+
+discovery:
+  detect_crds: true
+  detect_helm: true
+  detect_ingress: true
+  detect_storage: true

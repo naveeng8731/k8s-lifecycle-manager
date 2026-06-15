@@ -1,0 +1,53 @@
+---
+- name: Kubernetes Precheck
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+
+    # -------------------------
+    # Nodes
+    # -------------------------
+    - name: Get Nodes
+      shell: kubectl get nodes -o json
+      register: nodes
+      ignore_errors: yes
+
+    # -------------------------
+    # Pods
+    # -------------------------
+    - name: Get Pods
+      shell: kubectl get pods -A -o json
+      register: pods
+      ignore_errors: yes
+
+    # -------------------------
+    # Events
+    # -------------------------
+    - name: Get Events
+      shell: kubectl get events -A -o json
+      register: events
+      ignore_errors: yes
+
+    # -------------------------
+    # Upgrade Plan (FIXED)
+    # -------------------------
+    - name: Get Upgrade Plan
+      shell: sudo kubeadm upgrade plan
+      register: upgrade_plan
+      ignore_errors: yes
+
+    # -------------------------
+    # Save Precheck Data (FIXED SAFE JSON)
+    # -------------------------
+    - name: Save Precheck Data
+      copy:
+        dest: "{{ playbook_dir }}/../output/precheck_raw.json"
+        content: |
+          {
+            "nodes": {{ nodes.stdout | default('{}') | to_json }},
+            "pods": {{ pods.stdout | default('{}') | to_json }},
+            "events": {{ events.stdout | default('{}') | to_json }},
+            "upgrade_plan": {{ upgrade_plan.stdout | default('') | to_json }}
+          }

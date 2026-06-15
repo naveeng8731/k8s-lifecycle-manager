@@ -1,0 +1,692 @@
+{
+    "control_planes": 1,
+    "workers": 0,
+    "cluster_version": "v1.34.8",
+    "namespace_count": 8,
+    "crd_count": 32,
+    "storage_class_count": 0,
+    "components": [
+        "Calico",
+        "NGINX Ingress",
+        "Metrics Server",
+        "ETCD"
+    ],
+    "applications": [
+        {
+            "name": "calico-apiserver",
+            "namespace": "calico-apiserver",
+            "image": "docker.io/calico/apiserver:v3.30.3",
+            "version": "v3.30.3"
+        },
+        {
+            "name": "calico-kube-controllers",
+            "namespace": "calico-system",
+            "image": "docker.io/calico/kube-controllers:v3.30.3",
+            "version": "v3.30.3"
+        },
+        {
+            "name": "calico-typha",
+            "namespace": "calico-system",
+            "image": "docker.io/calico/typha:v3.30.3",
+            "version": "v3.30.3"
+        },
+        {
+            "name": "goldmane",
+            "namespace": "calico-system",
+            "image": "docker.io/calico/goldmane:v3.30.3",
+            "version": "v3.30.3"
+        },
+        {
+            "name": "whisker",
+            "namespace": "calico-system",
+            "image": "docker.io/calico/whisker:v3.30.3",
+            "version": "v3.30.3"
+        },
+        {
+            "name": "nginx-deployment",
+            "namespace": "default",
+            "image": "nginx:1.28",
+            "version": "1.28"
+        },
+        {
+            "name": "ingress-nginx-controller",
+            "namespace": "ingress-nginx",
+            "image": "registry.k8s.io/ingress-nginx/controller:v1.15.1@sha256:594ceea76b01c592858f803f9ff4d2cb40542cae2060410b2c95f75907d659e1",
+            "version": "v1.15.1"
+        },
+        {
+            "name": "coredns",
+            "namespace": "kube-system",
+            "image": "registry.k8s.io/coredns/coredns:v1.12.1",
+            "version": "v1.12.1"
+        },
+        {
+            "name": "metrics-server",
+            "namespace": "kube-system",
+            "image": "registry.k8s.io/metrics-server/metrics-server:v0.8.1",
+            "version": "v0.8.1"
+        },
+        {
+            "name": "tigera-operator",
+            "namespace": "tigera-operator",
+            "image": "quay.io/tigera/operator:v1.38.6",
+            "version": "v1.38.6"
+        },
+        {
+            "name": "calico-node",
+            "namespace": "calico-system",
+            "image": "docker.io/calico/node:v3.30.3",
+            "version": "v3.30.3"
+        },
+        {
+            "name": "csi-node-driver",
+            "namespace": "calico-system",
+            "image": "docker.io/calico/csi:v3.30.3",
+            "version": "v3.30.3"
+        },
+        {
+            "name": "nginx-daemonset",
+            "namespace": "default",
+            "image": "nginx:1.25",
+            "version": "1.25"
+        },
+        {
+            "name": "kube-proxy",
+            "namespace": "kube-system",
+            "image": "registry.k8s.io/kube-proxy:v1.34.8",
+            "version": "v1.34.8"
+        },
+        {
+            "name": "nginx-statefulset",
+            "namespace": "default",
+            "image": "nginx:1.25",
+            "version": "1.25"
+        }
+    ],
+    "health": "HEALTHY",
+    "current_version": "v1.34.8",
+    "stable_version": "v1.36.2",
+    "dependency_report": [
+        {
+            "component": "calico-apiserver",
+            "current_version": "v3.30.3",
+            "status": "VERSION COMPATIBILITY REQUIRED"
+        },
+        {
+            "component": "calico-kube-controllers",
+            "current_version": "v3.30.3",
+            "status": "VERSION COMPATIBILITY REQUIRED"
+        },
+        {
+            "component": "calico-typha",
+            "current_version": "v3.30.3",
+            "status": "VERSION COMPATIBILITY REQUIRED"
+        },
+        {
+            "component": "goldmane",
+            "current_version": "v3.30.3",
+            "status": "SAFE"
+        },
+        {
+            "component": "whisker",
+            "current_version": "v3.30.3",
+            "status": "SAFE"
+        },
+        {
+            "component": "nginx-deployment",
+            "current_version": "1.28",
+            "status": "SAFE"
+        },
+        {
+            "component": "ingress-nginx-controller",
+            "current_version": "v1.15.1",
+            "status": "CHECK API VERSION COMPATIBILITY"
+        },
+        {
+            "component": "coredns",
+            "current_version": "v1.12.1",
+            "status": "SAFE"
+        },
+        {
+            "component": "metrics-server",
+            "current_version": "v0.8.1",
+            "status": "MINOR UPGRADE REQUIRED"
+        },
+        {
+            "component": "tigera-operator",
+            "current_version": "v1.38.6",
+            "status": "SAFE"
+        },
+        {
+            "component": "calico-node",
+            "current_version": "v3.30.3",
+            "status": "VERSION COMPATIBILITY REQUIRED"
+        },
+        {
+            "component": "csi-node-driver",
+            "current_version": "v3.30.3",
+            "status": "SAFE"
+        },
+        {
+            "component": "nginx-daemonset",
+            "current_version": "1.25",
+            "status": "SAFE"
+        },
+        {
+            "component": "kube-proxy",
+            "current_version": "v1.34.8",
+            "status": "CRITICAL - upgrade with control plane"
+        },
+        {
+            "component": "nginx-statefulset",
+            "current_version": "1.25",
+            "status": "SAFE"
+        }
+    ],
+    "risks": [
+        "Single Control Plane (No HA)",
+        "No StorageClass configured",
+        "High number of workloads detected"
+    ],
+    "compatibility": [
+        {
+            "component": "calico-apiserver",
+            "current": "v3.30.3",
+            "status": "PASS",
+            "recommended": "v3.30.3"
+        },
+        {
+            "component": "calico-kube-controllers",
+            "current": "v3.30.3",
+            "status": "PASS",
+            "recommended": "v3.30.3"
+        },
+        {
+            "component": "calico-typha",
+            "current": "v3.30.3",
+            "status": "PASS",
+            "recommended": "v3.30.3"
+        },
+        {
+            "component": "goldmane",
+            "current": "v3.30.3",
+            "status": "PASS",
+            "recommended": "v3.30.3"
+        },
+        {
+            "component": "whisker",
+            "current": "v3.30.3",
+            "status": "PASS",
+            "recommended": "v3.30.3"
+        },
+        {
+            "component": "nginx-deployment",
+            "current": "1.28",
+            "status": "PASS",
+            "recommended": "1.28"
+        },
+        {
+            "component": "ingress-nginx-controller",
+            "current": "v1.15.1",
+            "status": "PASS",
+            "recommended": "v1.15.1"
+        },
+        {
+            "component": "coredns",
+            "current": "v1.12.1",
+            "status": "PASS",
+            "recommended": "v1.12.1"
+        },
+        {
+            "component": "metrics-server",
+            "current": "v0.8.1",
+            "status": "PASS",
+            "recommended": "v0.8.1"
+        },
+        {
+            "component": "tigera-operator",
+            "current": "v1.38.6",
+            "status": "PASS",
+            "recommended": "v1.38.6"
+        },
+        {
+            "component": "calico-node",
+            "current": "v3.30.3",
+            "status": "PASS",
+            "recommended": "v3.30.3"
+        },
+        {
+            "component": "csi-node-driver",
+            "current": "v3.30.3",
+            "status": "PASS",
+            "recommended": "v3.30.3"
+        },
+        {
+            "component": "nginx-daemonset",
+            "current": "1.25",
+            "status": "PASS",
+            "recommended": "1.25"
+        },
+        {
+            "component": "kube-proxy",
+            "current": "v1.34.8",
+            "status": "PASS",
+            "recommended": "v1.34.8"
+        },
+        {
+            "component": "nginx-statefulset",
+            "current": "1.25",
+            "status": "PASS",
+            "recommended": "1.25"
+        }
+    ],
+    "upgrade_plan": {
+        "eligible": true,
+        "target_version": "v1.36.2",
+        "current_version": "v1.34.8",
+        "risk_score": 60,
+        "version_steps": [
+            "v1.34.9",
+            "v1.34.10",
+            "v1.34.11",
+            "v1.34.12",
+            "v1.34.13",
+            "v1.34.14",
+            "v1.34.15",
+            "v1.34.16",
+            "v1.34.17",
+            "v1.34.18",
+            "v1.34.19",
+            "v1.34.20",
+            "v1.35.0",
+            "v1.35.1",
+            "v1.35.2",
+            "v1.35.3",
+            "v1.35.4",
+            "v1.35.5",
+            "v1.35.6",
+            "v1.35.7",
+            "v1.35.8",
+            "v1.35.9",
+            "v1.35.10",
+            "v1.35.11",
+            "v1.35.12",
+            "v1.35.13",
+            "v1.35.14",
+            "v1.35.15",
+            "v1.35.16",
+            "v1.35.17",
+            "v1.35.18",
+            "v1.35.19",
+            "v1.35.20",
+            "v1.36.0",
+            "v1.36.1",
+            "v1.36.2"
+        ],
+        "phases": [
+            {
+                "phase": "Upgrade to v1.34.9",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.9",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.10",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.10",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.11",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.11",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.12",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.12",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.13",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.13",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.14",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.14",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.15",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.15",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.16",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.16",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.17",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.17",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.18",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.18",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.19",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.19",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.34.20",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.34.20",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.0",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.0",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.1",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.1",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.2",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.2",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.3",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.3",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.4",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.4",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.5",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.5",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.6",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.6",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.7",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.7",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.8",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.8",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.9",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.9",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.10",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.10",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.11",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.11",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.12",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.12",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.13",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.13",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.14",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.14",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.15",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.15",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.16",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.16",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.17",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.17",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.18",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.18",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.19",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.19",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.35.20",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.35.20",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.36.0",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.36.0",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.36.1",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.36.1",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            },
+            {
+                "phase": "Upgrade to v1.36.2",
+                "actions": [
+                    "cordon nodes",
+                    "drain nodes",
+                    "kubeadm upgrade apply v1.36.2",
+                    "uncordon nodes",
+                    "validate cluster"
+                ]
+            }
+        ],
+        "blockers": []
+    },
+    "upgrade_available": true,
+    "target_version": "v1.36.2"
+}

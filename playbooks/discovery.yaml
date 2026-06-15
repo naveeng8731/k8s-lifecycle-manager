@@ -1,0 +1,80 @@
+---
+- name: Kubernetes Discovery
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+
+    - name: Ensure output directory exists
+      file:
+        path: "{{ playbook_dir }}/../output"
+        state: directory
+        mode: "0755"
+
+    - name: Cluster Version
+      shell: kubectl version -o json
+      register: version
+      ignore_errors: yes
+
+    - name: Nodes
+      shell: kubectl get nodes -o json
+      register: nodes
+      ignore_errors: yes
+
+    - name: Pods
+      shell: kubectl get pods -A -o json
+      register: pods
+      ignore_errors: yes
+
+    - name: Namespaces
+      shell: kubectl get ns -o json
+      register: namespaces
+      ignore_errors: yes
+
+    - name: CRDs
+      shell: kubectl get crd -o json
+      register: crds
+      ignore_errors: yes
+
+    - name: Storage Classes
+      shell: kubectl get storageclass -o json
+      register: storageclasses
+      ignore_errors: yes
+
+    - name: Ingresses
+      shell: kubectl get ingress -A -o json
+      register: ingress
+      ignore_errors: yes
+
+    - name: Get Deployments
+      shell: kubectl get deployment -A -o json
+      register: deployments
+      ignore_errors: yes
+
+    - name: Get Daemonsets
+      shell: kubectl get daemonset -A -o json
+      register: daemonsets
+      ignore_errors: yes
+
+    - name: Get Statefulsets
+      shell: kubectl get statefulset -A -o json
+      register: statefulsets
+      ignore_errors: yes
+    - name: Save Raw Data
+      copy:
+        dest: "{{ playbook_dir }}/../output/discovery_raw.json"
+        content: |
+          {
+            "version": {{ version.stdout | default('{}') }},
+            "nodes": {{ nodes.stdout | default('{}') }},
+            "pods": {{ pods.stdout | default('{}') }},
+            "namespaces": {{ namespaces.stdout | default('{}') }},
+            "crds": {{ crds.stdout | default('{}') }},
+            "storageclasses": {{ storageclasses.stdout | default('{}') }},
+            "ingress": {{ ingress.stdout | default('{}') }},
+            "deployments": {{ deployments.stdout | default('{}') }},
+            "daemonsets": {{ daemonsets.stdout | default('{}') }},
+            "statefulsets": {{ statefulsets.stdout | default('{}') }}
+          }
+

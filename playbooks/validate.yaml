@@ -1,0 +1,43 @@
+---
+- name: Validation
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+
+    - name: Nodes
+      shell: kubectl get nodes
+      register: nodes
+
+    - name: Pods
+      shell: kubectl get pods -A
+      register: pods
+
+    - name: Events
+      shell: kubectl get events -A
+      register: events
+      ignore_errors: yes
+
+    - name: Save Validation Report
+      copy:
+        dest: output/validation_report.txt
+        content: |
+          =================================
+          VALIDATION REPORT
+          =================================
+
+          Nodes
+
+          {{ nodes.stdout }}
+
+          ---------------------------------
+
+          Pods
+
+          {{ pods.stdout }}
+
+          ---------------------------------
+
+          Events
+
+          {{ events.stdout }}

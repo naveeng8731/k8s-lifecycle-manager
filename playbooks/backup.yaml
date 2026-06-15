@@ -1,0 +1,24 @@
+---
+- name: ETCD Backup
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+
+    - name: Create Backup Directory
+      file:
+        path: backups
+        state: directory
+
+    - name: Backup Timestamp
+      shell: date +%F-%H-%M-%S
+      register: backup_time
+
+    - name: ETCD Snapshot
+      shell: |
+        ETCDCTL_API=3 etcdctl snapshot save backups/etcd-{{ backup_time.stdout }}.db
+      register: backup
+      ignore_errors: yes
+
+    - debug:
+        var: backup.stdout

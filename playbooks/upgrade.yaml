@@ -1,0 +1,30 @@
+---
+- name: Kubernetes Upgrade Execution
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+
+    - name: Get nodes
+      shell: kubectl get nodes -o name
+      register: nodes
+
+    - name: Cordon nodes
+      shell: kubectl cordon {{ item }}
+      loop: "{{ nodes.stdout_lines }}"
+
+    - name: Drain nodes
+      shell: >
+        kubectl drain {{ item }}
+        --ignore-daemonsets
+        --delete-emptydir-data
+        --force
+      loop: "{{ nodes.stdout_lines }}"
+
+    - name: Upgrade control plane
+      shell: kubeadm upgrade apply {{ target_version }} -y
+
+    - name: Uncordon nodes
+      shell: kubectl uncordon {{ item }}
+      loop: "{{ nodes.stdout_lines }}"
