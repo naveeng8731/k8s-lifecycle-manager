@@ -23,7 +23,7 @@ discovery:
 # ─────────────────────────────────────────────────────────
 remote:
   # IP or hostname of the Kubernetes control plane node
-  host: 192.168.115.3
+  host: 192.168.22.20
 
   # SSH user on the remote server
   user: ubuntu
