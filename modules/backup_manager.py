@@ -119,6 +119,36 @@ def save_backup_metadata(backup_file, cluster_version):
 # ─────────────────────────────────────────────────────────
 # TAKE ETCD SNAPSHOT
 # ─────────────────────────────────────────────────────────
+# Global remote config — set by upgrade_executor
+_backup_remote_config = None
+
+def set_remote_config(config):
+    global _backup_remote_config
+    _backup_remote_config = config
+
+
+def _run_on_server(cmd, timeout=60):
+    """Run command on server (remote mode) or locally"""
+    global _backup_remote_config
+    if _backup_remote_config and _backup_remote_config.get("host"):
+        from modules.remote_connection import ssh_run
+        cfg = _backup_remote_config
+        pw  = cfg.get("_session_password", "")
+        if pw and "sudo " in cmd:
+            cmd = cmd.replace("sudo ", f"echo '{pw}' | sudo -S ", 1)
+        return ssh_run(
+            cfg["host"], cfg["user"], cmd,
+            port=cfg.get("port", 22),
+            ssh_key=cfg.get("ssh_key"),
+            password=pw,
+            timeout=timeout
+        )
+    else:
+        import subprocess
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        return result
+
+
 def take_etcd_snapshot(cluster_version="unknown"):
 
     backup_dir  = ensure_backup_dir()
