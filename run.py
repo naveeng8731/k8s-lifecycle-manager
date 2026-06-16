@@ -1,103 +1,439 @@
 #!/usr/bin/env python3
 
+# ─────────────────────────────────────────────────────────
+# Kubernetes Lifecycle Manager
+# Just run:  python3 run.py
+# Works on Windows, Linux, Mac.
+# Connects to remote server automatically.
+# ─────────────────────────────────────────────────────────
+
 import os
 import sys
 import subprocess
+import platform
+import shutil
 import argparse
 
-from modules.cluster_detector import (
-    detect_cluster_state,
-    get_tool_versions,
-    print_cluster_state,
-    STATE_HEALTHY,
-    STATE_DEGRADED,
-    STATE_NOT_INSTALLED,
-    STATE_INSTALLED_NO_CLUSTER,
-    STATE_UNREACHABLE
-)
-from modules.cluster_installer import install_fresh_cluster
-from modules.discovery import load_discovery_data, detect_cluster_info
-from modules.component_detector import detect_components
-from modules.report_generator import save_inventory, save_application_inventory
-from modules.version_manager import get_upgrade_information
-from modules.validation import check_cluster_health
-from modules.application_inventory import get_application_inventory
-from modules.risk_analyzer import analyze_risk
-from modules.compatibility_engine import check_compatibility
-from modules.upgrade_engine import build_upgrade_plan
-from modules.upgrade_executor import execute_upgrade
-from modules.dependency_engine import analyze_dependencies
+
+# ─────────────────────────────────────────────────────────
+# STEP 1 — CHECK DEPENDENCIES
+# Runs before anything else.
+# Tells user exactly what to install if something is missing.
+# ─────────────────────────────────────────────────────────
+def check_dependencies():
+
+    os_type = platform.system().lower()
+    errors  = []
+
+    # pip packages
+    for pkg, import_name in [("requests", "requests"), ("pyyaml", "yaml")]:
+        try:
+            __import__(import_name)
+        except ImportError:
+            errors.append(
+                f"Missing Python package: {pkg}\n"
+                f"    Fix: pip install {pkg}"
+            )
+
+    # Ansible
+    if not shutil.which("ansible-playbook"):
+        if os_type == "windows":
+            errors.append("Ansible not installed.\n    Fix: pip install ansible")
+        elif os_type == "darwin":
+            errors.append("Ansible not installed.\n    Fix: brew install ansible  OR  pip3 install ansible")
+        else:
+            errors.append("Ansible not installed.\n    Fix: sudo apt install ansible -y  OR  pip3 install ansible")
+
+    # SSH client
+    if not shutil.which("ssh"):
+        if os_type == "windows":
+            errors.append("SSH client not found.\n    Fix: Settings → Apps → Optional Features → OpenSSH Client")
+        else:
+            errors.append("SSH client not found.\n    Fix: sudo apt install openssh-client")
+
+    if errors:
+        print("\n" + "="*55)
+        print("  MISSING DEPENDENCIES")
+        print("="*55 + "\n")
+        for e in errors:
+            print(f"  ❌ {e}\n")
+        print("  After installing, run:  python3 run.py\n")
+        sys.exit(1)
+
+
+# ─────────────────────────────────────────────────────────
+# STEP 2 — DETECT MODE
+# Windows          → always REMOTE (can't run k8s locally)
+# Linux/Mac with kubectl connected to cluster → LOCAL
+# Linux/Mac without cluster                  → REMOTE
+# ─────────────────────────────────────────────────────────
+def detect_mode(forced_mode=None):
+
+    if forced_mode:
+        return forced_mode
+
+    os_type = platform.system().lower()
+
+    if os_type == "windows":
+        print("  [INFO] Windows detected → REMOTE mode")
+        print("         All commands run on the remote Linux server via SSH\n")
+        return "remote"
+
+    # Linux / Mac: check if kubectl can reach a local cluster
+    if shutil.which("kubectl"):
+        result = subprocess.run(
+            "kubectl cluster-info --request-timeout=3s",
+            shell=True, capture_output=True
+        )
+        if result.returncode == 0:
+            print("  [INFO] Local cluster found → LOCAL mode\n")
+            return "local"
+
+    print("  [INFO] No local cluster → REMOTE mode\n")
+    return "remote"
 
 
 # ─────────────────────────────────────────────────────────
 # ARGUMENT PARSER
-# Supports:
-#   python3 run.py                → local mode (default)
-#   python3 run.py --mode remote  → remote mode (from local machine)
-#   python3 run.py --mode local   → explicit local mode
-#   python3 run.py --setup        → show local machine setup instructions
 # ─────────────────────────────────────────────────────────
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Kubernetes Lifecycle Manager",
+        description="Kubernetes Lifecycle Manager — just run: python3 run.py",
         formatter_class=argparse.RawTextHelpFormatter
     )
     parser.add_argument(
         "--mode",
         choices=["local", "remote"],
-        default="local",
+        default=None,
         help=(
-            "local  : run directly on the k8s cluster node (default)\n"
-            "remote : run from your local machine (Windows/Linux/Mac)\n"
-            "         connects to remote cluster via SSH + kubeconfig"
+            "local  : run directly on the k8s cluster server\n"
+            "remote : run from your laptop (Windows/Linux/Mac)\n"
+            "         auto-detected if not specified"
         )
     )
     parser.add_argument(
         "--setup",
         action="store_true",
-        help="Show local machine setup instructions for remote mode"
+        help="Show setup instructions for your OS"
     )
     return parser.parse_args()
 
 
 # ─────────────────────────────────────────────────────────
 # RUN PLAYBOOK
-# Supports both local and remote inventory
 # ─────────────────────────────────────────────────────────
 def run_playbook(playbook, mode="local"):
 
     print(f"\nRunning {playbook}...\n")
 
     if mode == "remote":
-        # Use k8s_cluster group with SSH connection
-        inventory = "inventory/hosts.ini"
-        hosts_arg = "k8s_cluster"
         cmd = [
-            "ansible-playbook",
-            "-i", inventory,
-            "--limit", hosts_arg,
-            playbook
+            "ansible-playbook", "-i", "inventory/hosts.ini",
+            "--limit", "k8s_cluster", playbook
         ]
     else:
-        # Run locally
         cmd = [
-            "ansible-playbook",
-            "-i", "inventory/hosts.ini",
-            "--limit", "local",
-            playbook
+            "ansible-playbook", "-i", "inventory/hosts.ini",
+            "--limit", "local", playbook
         ]
 
     result = subprocess.run(cmd)
-
     if result.returncode != 0:
         print(f"\nERROR: {playbook} failed")
         sys.exit(1)
 
 
 # ─────────────────────────────────────────────────────────
+# AUTO-UPDATE INVENTORY
+# After wizard collects connection info, write
+# inventory/hosts.ini so Ansible knows where to connect
+# ─────────────────────────────────────────────────────────
+def update_inventory(remote_config):
+
+    host    = remote_config.get("host")
+    user    = remote_config.get("user")
+    ssh_key = remote_config.get("ssh_key")
+    port    = remote_config.get("port", 22)
+
+    if ssh_key:
+        host_line = (
+            f"remote_server "
+            f"ansible_host={host} "
+            f"ansible_user={user} "
+            f"ansible_ssh_private_key_file={ssh_key} "
+            f"ansible_port={port}"
+        )
+    else:
+        # password auth — ansible will use ANSIBLE_SSH_PASS env var
+        host_line = (
+            f"remote_server "
+            f"ansible_host={host} "
+            f"ansible_user={user} "
+            f"ansible_port={port}"
+        )
+
+    content = f"""# Auto-generated by k8s-lifecycle-manager
+# Run: python3 run.py  to regenerate
+
+[k8s_cluster]
+{host_line}
+
+[k8s_cluster:vars]
+ansible_ssh_common_args='-o StrictHostKeyChecking=no'
+ansible_python_interpreter=/usr/bin/python3
+
+[local]
+localhost ansible_connection=local
+"""
+    os.makedirs("inventory", exist_ok=True)
+    with open("inventory/hosts.ini", "w") as f:
+        f.write(content)
+
+    print(f"  [INFO] Ansible inventory updated → inventory/hosts.ini")
+
+    # For password auth, set env var for ansible
+    password = remote_config.get("_session_password")
+    if password:
+        os.environ["ANSIBLE_SSH_PASS"] = password
+        os.environ["ANSIBLE_HOST_KEY_CHECKING"] = "False"
+
+
+# ─────────────────────────────────────────────────────────
+# REMOTE INSTALL
+# Runs cluster_installer logic ON THE REMOTE SERVER via SSH
+# ─────────────────────────────────────────────────────────
+def remote_install_cluster(remote_config):
+    """
+    For remote mode: instead of running install locally,
+    copy the installer script to the remote server and run it there.
+    The installer on the server handles single/multi-node questions.
+    """
+    from modules.remote_connection import ssh_run
+
+    host     = remote_config.get("host")
+    user     = remote_config.get("user")
+    port     = remote_config.get("port", 22)
+    ssh_key  = remote_config.get("ssh_key")
+    password = remote_config.get("_session_password")
+
+    print("\n======================================")
+    print(" REMOTE CLUSTER INSTALLATION")
+    print("======================================\n")
+    print(f"  Target server : {user}@{host}")
+    print(f"  The installation will run ON THE SERVER\n")
+
+    # Ask cluster type HERE on local machine
+    # then pass the answer to the remote script
+    print("  What type of cluster do you want to install on the server?\n")
+    print("  1) Single-node  — 1 server (control plane + worker)")
+    print("                    Good for: testing, development")
+    print()
+    print("  2) Multi-node   — 1 control plane + worker nodes")
+    print("                    Good for: production")
+    print()
+
+    while True:
+        choice = input("  Choose [1/2]: ").strip()
+        if choice in ["1", "2"]:
+            break
+        print("  Please enter 1 or 2")
+
+    cluster_type = "single" if choice == "1" else "multi"
+
+    worker_ips = []
+    if cluster_type == "multi":
+        print("\n  Worker node IPs (servers that will join the cluster)")
+        print("  These must be reachable FROM the control plane server\n")
+        while True:
+            w = input(f"  Worker {len(worker_ips)+1} IP (or press Enter to finish): ").strip()
+            if not w:
+                break
+            worker_ips.append(w)
+            print(f"  ✔ Worker {w} added")
+
+        if not worker_ips:
+            print("\n  No workers added — switching to single-node")
+            cluster_type = "single"
+        else:
+            print(f"\n  ✔ {len(worker_ips)} worker(s) configured")
+
+    # Fetch stable version
+    print("\n  [INFO] Fetching latest stable Kubernetes version...")
+    result = ssh_run(
+        host, user,
+        "curl -sL https://dl.k8s.io/release/stable.txt",
+        port=port, ssh_key=ssh_key, password=password
+    )
+    k8s_version = result.stdout.strip() if result.returncode == 0 else "v1.36.2"
+    print(f"  [INFO] Will install Kubernetes {k8s_version}")
+
+    print(f"\n  Summary:")
+    print(f"    Server       : {host}")
+    print(f"    Cluster type : {'Single-node' if cluster_type == 'single' else f'Multi-node ({1+len(worker_ips)} nodes)'}")
+    print(f"    K8s version  : {k8s_version}")
+    if worker_ips:
+        for i, w in enumerate(worker_ips, 1):
+            print(f"    Worker {i}      : {w}")
+    print()
+
+    confirm = input("  Proceed with installation on the remote server? (yes/no): ").strip().lower()
+    if confirm != "yes":
+        print("\n  Installation aborted.\n")
+        return False
+
+    # Build remote install script
+    ver = k8s_version.lstrip("v")
+    parts = ver.split(".")
+    minor_ver = f"v{parts[0]}.{parts[1]}"
+
+    install_script = f"""
+set -e
+echo "=== STEP 1: Installing dependencies ==="
+sudo apt-get update -qq
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg socat conntrack ebtables ipset
+
+echo "=== STEP 2: Installing containerd ==="
+sudo apt-get install -y containerd
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+sudo systemctl enable containerd && sudo systemctl restart containerd
+
+echo "=== STEP 3: Disabling swap ==="
+sudo swapoff -a
+sudo sed -i '/swap/d' /etc/fstab
+
+echo "=== STEP 4: Kernel modules ==="
+echo -e 'overlay\\nbr_netfilter' | sudo tee /etc/modules-load.d/k8s.conf
+sudo modprobe overlay && sudo modprobe br_netfilter
+printf 'net.bridge.bridge-nf-call-iptables=1\\nnet.bridge.bridge-nf-call-ip6tables=1\\nnet.ipv4.ip_forward=1\\n' | sudo tee /etc/sysctl.d/k8s.conf
+sudo sysctl --system -q
+
+echo "=== STEP 5: Installing Kubernetes tools ==="
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/{minor_ver}/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --batch --yes
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{minor_ver}/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update -qq
+sudo apt-get install -y kubeadm={ver}-* kubelet={ver}-* kubectl={ver}-* 2>/dev/null || sudo apt-get install -y kubeadm={ver} kubelet={ver} kubectl={ver}
+sudo apt-mark hold kubeadm kubelet kubectl
+sudo systemctl enable kubelet
+
+echo "=== STEP 6: kubeadm init ==="
+NODE_IP=$(hostname -I | awk '{{print $1}}')
+sudo kubeadm init --kubernetes-version={k8s_version} --pod-network-cidr=192.168.0.0/16 --apiserver-advertise-address=$NODE_IP --node-name=$(hostname) 2>&1 | tee /tmp/kubeadm_init.log
+
+echo "=== STEP 7: Configure kubectl ==="
+mkdir -p $HOME/.kube
+sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+echo "=== STEP 8: Install Calico CNI ==="
+sleep 15
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
+
+{"" if cluster_type == "multi" else '''
+echo "=== STEP 9: Remove control-plane taint (single-node) ==="
+kubectl taint nodes --all node-role.kubernetes.io/control-plane- 2>/dev/null || true
+'''}
+
+echo "INSTALL_COMPLETE"
+"""
+
+    print(f"\n  [INFO] Running installation on {host}...\n")
+    print(f"  This will take 5-10 minutes. Please wait.\n")
+
+    result = ssh_run(
+        host, user, install_script,
+        port=port, ssh_key=ssh_key, password=password,
+        timeout=600
+    )
+
+    print(result.stdout)
+
+    if result.returncode != 0 or "INSTALL_COMPLETE" not in result.stdout:
+        print(f"\n  ❌ Installation failed on {host}")
+        print(f"  Check the server: ssh {user}@{host}")
+        print(f"  Logs: sudo journalctl -u kubelet -n 50 --no-pager")
+        return False
+
+    print(f"\n  ✔ Control plane installed on {host}")
+
+    # Multi-node: join workers
+    if cluster_type == "multi" and worker_ips:
+
+        # Get join command from control plane
+        result = ssh_run(
+            host, user,
+            "sudo kubeadm token create --print-join-command",
+            port=port, ssh_key=ssh_key, password=password
+        )
+        join_cmd = result.stdout.strip()
+
+        if not join_cmd:
+            print("  ⚠ Could not get join command — workers must be joined manually")
+        else:
+            for w_ip in worker_ips:
+                print(f"\n  [INFO] Joining worker {w_ip}...")
+                w_script = f"""
+set -e
+sudo apt-get update -qq
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg socat conntrack
+sudo apt-get install -y containerd
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml > /dev/null
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+sudo systemctl enable containerd && sudo systemctl restart containerd
+sudo swapoff -a && sudo sed -i '/swap/d' /etc/fstab
+echo -e 'overlay\\nbr_netfilter' | sudo tee /etc/modules-load.d/k8s.conf
+sudo modprobe overlay && sudo modprobe br_netfilter
+printf 'net.bridge.bridge-nf-call-iptables=1\\nnet.ipv4.ip_forward=1\\n' | sudo tee /etc/sysctl.d/k8s.conf
+sudo sysctl --system -q
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/{minor_ver}/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --batch --yes
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/{minor_ver}/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update -qq
+sudo apt-get install -y kubeadm={ver}-* kubelet={ver}-* 2>/dev/null || sudo apt-get install -y kubeadm={ver} kubelet={ver}
+sudo apt-mark hold kubeadm kubelet
+sudo systemctl enable kubelet
+sudo {join_cmd}
+echo "WORKER_JOINED"
+"""
+                w_result = ssh_run(
+                    w_ip, user, w_script,
+                    port=port, ssh_key=ssh_key, password=password,
+                    timeout=300
+                )
+
+                if "WORKER_JOINED" in w_result.stdout:
+                    print(f"  ✔ Worker {w_ip} joined successfully")
+                else:
+                    print(f"  ⚠ Worker {w_ip} may have failed — check manually")
+                    print(f"    ssh {user}@{w_ip} then run: sudo {join_cmd}")
+
+    print("\n======================================")
+    print(" INSTALLATION COMPLETE ✔")
+    print("======================================\n")
+    print(f"  Kubernetes {k8s_version} is now running on {host}")
+    print(f"  Run: ssh {user}@{host} kubectl get nodes\n")
+    return True
+
+
+# ─────────────────────────────────────────────────────────
 # UPGRADE FLOW
 # ─────────────────────────────────────────────────────────
 def run_upgrade_flow(data, mode="local"):
+
+    from modules.discovery              import detect_cluster_info
+    from modules.component_detector     import detect_components
+    from modules.report_generator       import save_inventory, save_application_inventory
+    from modules.version_manager        import get_upgrade_information
+    from modules.validation             import check_cluster_health
+    from modules.application_inventory  import get_application_inventory
+    from modules.risk_analyzer          import analyze_risk
+    from modules.compatibility_engine   import check_compatibility
+    from modules.upgrade_engine         import build_upgrade_plan
+    from modules.upgrade_executor       import execute_upgrade
+    from modules.dependency_engine      import analyze_dependencies
 
     inventory = detect_cluster_info(data)
     inventory["components"] = detect_components(data)
@@ -106,21 +442,15 @@ def run_upgrade_flow(data, mode="local"):
     applications = get_application_inventory()
     inventory["applications"] = applications
 
-    risks = analyze_risk(inventory, applications)
-    inventory["risks"] = risks
-
-    compatibility = check_compatibility(
-        inventory["cluster_version"],
-        applications
-    )
+    risks         = analyze_risk(inventory, applications)
+    compatibility = check_compatibility(inventory["cluster_version"], applications)
+    inventory["risks"]         = risks
     inventory["compatibility"] = compatibility
-    inventory["health"] = check_cluster_health()
+    inventory["health"]        = check_cluster_health()
 
-    version_info = get_upgrade_information()
-
+    version_info    = get_upgrade_information()
     current_version = version_info.get("current_version") or inventory.get("cluster_version")
     stable_version  = version_info.get("stable_version")
-
     inventory["current_version"] = current_version
     inventory["stable_version"]  = stable_version
 
@@ -136,19 +466,17 @@ def run_upgrade_flow(data, mode="local"):
             print("\n  ✔ Already on stable version — no upgrade required")
             save_inventory(inventory)
             save_application_inventory(applications)
-            print("\nCluster Summary Generated Successfully\n")
+            print("\nDone.\n")
             return
         else:
-            print("\n  ⚠ Upgrade opportunity detected")
+            print("\n  ⚠ Upgrade available")
     else:
-        print("\n  ❌ Unable to determine versions")
+        print("\n  ❌ Could not determine versions")
         save_inventory(inventory)
         save_application_inventory(applications)
         return
 
-    dependency_report = analyze_dependencies(
-        applications, stable_version, current_version
-    )
+    dependency_report = analyze_dependencies(applications, stable_version, current_version)
     inventory["dependency_report"] = dependency_report
 
     upgrade_plan = build_upgrade_plan(inventory, compatibility, risks)
@@ -171,36 +499,27 @@ def run_upgrade_flow(data, mode="local"):
         for b in upgrade_plan["blockers"]:
             print(f"    - {b}")
 
-    nodes = []
-    for n in data.get("nodes", {}).get("items", []):
-        name = n.get("metadata", {}).get("name")
-        if name:
-            nodes.append(name)
-
-    if mode == "remote":
-        print("\n" + "="*55)
-        print("  ℹ  REMOTE MODE — UPGRADE EXECUTION")
-        print("="*55)
-        print("\n  You are running in REMOTE mode from your local machine.")
-        print("  The upgrade commands (kubeadm, apt-get) will run on")
-        print(f"  the remote server via SSH.\n")
+    nodes = [
+        n.get("metadata", {}).get("name")
+        for n in data.get("nodes", {}).get("items", [])
+        if n.get("metadata", {}).get("name")
+    ]
 
     if upgrade_plan.get("eligible"):
         print("\n=== EXECUTION STARTED ===\n")
         confirm = input("Proceed with upgrade? (yes/no): ").strip().lower()
-
         if confirm == "yes":
             success = execute_upgrade(upgrade_plan, nodes, mode=mode)
             if not success:
-                print("\n❌ Upgrade failed → check summary above")
+                print("\n❌ Upgrade failed — check summary above")
         else:
             print("\nUpgrade aborted by user")
     else:
-        print("\nUpgrade not eligible → skipping execution")
+        print("\nUpgrade not eligible — skipping")
 
     save_inventory(inventory)
     save_application_inventory(applications)
-    print("\nCluster Summary Generated Successfully\n")
+    print("\nDone.\n")
 
 
 # ─────────────────────────────────────────────────────────
@@ -208,111 +527,135 @@ def run_upgrade_flow(data, mode="local"):
 # ─────────────────────────────────────────────────────────
 def main():
 
+    # ── 1. Check dependencies ─────────────────────────────
+    check_dependencies()
+
     args = parse_args()
-    mode = args.mode
 
     print("\n======================================")
     print(" Kubernetes Lifecycle Manager")
-    print(f" Mode: {mode.upper()}")
     print("======================================\n")
 
-    # ─────────────────────────────────────────
-    # SETUP INSTRUCTIONS MODE
-    # ─────────────────────────────────────────
+    # ── 2. Setup help ─────────────────────────────────────
     if args.setup:
         from modules.remote_connection import print_local_setup_instructions
         print_local_setup_instructions()
         return
 
-    # ─────────────────────────────────────────
-    # REMOTE MODE SETUP
-    # Connect from local machine to remote cluster
-    # ─────────────────────────────────────────
+    # ── 3. Detect local or remote mode ───────────────────
+    mode = detect_mode(args.mode)
+    print(f"  Mode : {mode.upper()}\n")
+
+    # ── 4. REMOTE MODE — run connection wizard ────────────
+    remote_config = None
+
     if mode == "remote":
         from modules.remote_connection import setup_remote_connection
-        print("[INFO] Establishing remote connection...\n")
+        print("[INFO] Starting connection wizard...\n")
         try:
-            local_kubeconfig = setup_remote_connection()
+            remote_config = setup_remote_connection()
         except Exception as e:
-            print(f"\n❌ Remote connection failed: {e}")
-            print("\nFor setup instructions run:")
-            print("  python3 run.py --setup")
+            print(f"\n❌ Connection failed: {e}")
+            print("\nFor help: python3 run.py --setup\n")
             sys.exit(1)
 
-    # ─────────────────────────────────────────
-    # DETECT CLUSTER STATE
-    # ─────────────────────────────────────────
-    print("[INFO] Detecting cluster state...\n")
+        # Auto-update inventory/hosts.ini
+        update_inventory(remote_config)
 
-    tool_versions = get_tool_versions()
-    state = detect_cluster_state()
-    print_cluster_state(state, tool_versions)
+    # ── 5. DETECT CLUSTER STATE ───────────────────────────
+    print("\n[INFO] Detecting cluster state...\n")
 
-    # ─────────────────────────────────────────
-    # NO CLUSTER → OFFER INSTALL
-    # Only available in local mode
-    # ─────────────────────────────────────────
-    if state in [STATE_NOT_INSTALLED, STATE_INSTALLED_NO_CLUSTER]:
+    if mode == "remote":
+        # Check cluster state ON THE REMOTE SERVER via SSH
+        from modules.remote_connection import (
+            check_remote_cluster_state, get_remote_nodes
+        )
+        raw_state, node_count = check_remote_cluster_state(remote_config)
+
+        print(f"  Remote Server  : {remote_config.get('host')}")
+        print(f"  Platform       : {remote_config.get('platform', 'not set')}")
+        print(f"  Cluster State  : {raw_state}")
+
+        if node_count > 0:
+            print(f"  Node Count     : {node_count}")
+            get_remote_nodes(remote_config)
+
+        # Map remote state to standard states
+        if raw_state == "HEALTHY":
+            state = "HEALTHY"
+        elif raw_state == "NOT_INSTALLED":
+            state = "NOT_INSTALLED"
+        else:
+            state = "UNKNOWN"
+
+    else:
+        # Check cluster state on LOCAL machine
+        from modules.cluster_detector import (
+            detect_cluster_state, get_tool_versions,
+            print_cluster_state,
+            STATE_HEALTHY, STATE_DEGRADED,
+            STATE_NOT_INSTALLED, STATE_INSTALLED_NO_CLUSTER,
+            STATE_UNREACHABLE
+        )
+        tool_versions = get_tool_versions()
+        state = detect_cluster_state()
+        print_cluster_state(state, tool_versions)
+
+    # ── 6. BRANCH ON STATE ────────────────────────────────
+
+    # ── No cluster → offer to install ─────────────────────
+    if state in ["NOT_INSTALLED", "INSTALLED_NO_CLUSTER",
+                 "NOT_REACHABLE", "NO_NODES"]:
 
         print("\n======================================")
-        print(" No Cluster Detected")
+        print(" No Cluster Found")
         print("======================================\n")
 
         if mode == "remote":
-            print("  ❌ No cluster found on the remote server.")
-            print("  Fresh install via remote mode is not supported.")
-            print("  Please install Kubernetes on the server first,")
-            print("  then re-run: python3 run.py --mode remote\n")
-            return
+            print(f"  No Kubernetes cluster found on {remote_config.get('host')}\n")
+        else:
+            print("  No Kubernetes cluster found on this server.\n")
 
-        print("  Kubernetes is not installed or not initialized.\n")
         print("  Options:")
         print("    install - Install a fresh Kubernetes cluster")
-        print("    exit    - Exit and handle manually\n")
+        print("    exit    - Exit\n")
 
         choice = input("Choose [install/exit]: ").strip().lower()
 
-        if choice == "install":
-            success = install_fresh_cluster()
-            if success:
-                print("\n✔ Cluster installed! Re-run: python3 run.py\n")
-            else:
-                print("\n❌ Installation failed. See errors above.\n")
-        else:
+        if choice != "install":
             print("\nExiting.\n")
+            return
+
+        if mode == "remote":
+            # Install ON THE REMOTE SERVER via SSH
+            success = remote_install_cluster(remote_config)
+        else:
+            # Install locally
+            from modules.cluster_installer import install_fresh_cluster
+            success = install_fresh_cluster()
+
+        if success:
+            print("\n✔ Cluster installed! Re-run: python3 run.py\n")
+        else:
+            print("\n❌ Installation failed.\n")
         return
 
-    # ─────────────────────────────────────────
-    # UNREACHABLE
-    # ─────────────────────────────────────────
-    elif state == STATE_UNREACHABLE:
-
+    # ── Cluster unreachable ───────────────────────────────
+    elif state in ["UNREACHABLE", "UNKNOWN"]:
         print("\n======================================")
         print(" Cluster Unreachable")
         print("======================================\n")
         print("  Kubernetes API server is not responding.\n")
-        print("  Troubleshooting:")
+        print("  On the server, check:")
         print("    sudo systemctl status kubelet")
         print("    sudo systemctl restart kubelet")
-        print("    sudo crictl ps | grep apiserver")
         print("    sudo journalctl -u kubelet -n 50 --no-pager\n")
-
         if mode == "remote":
-            config = {}
-            try:
-                from modules.remote_connection import load_remote_config
-                config = load_remote_config()
-            except Exception:
-                pass
-            host = config.get("host", "remote-server")
-            print(f"  SSH into server and check: ssh {host}")
+            print(f"  SSH in: ssh {remote_config.get('user')}@{remote_config.get('host')}\n")
         return
 
-    # ─────────────────────────────────────────
-    # DEGRADED → WARN AND ASK
-    # ─────────────────────────────────────────
-    elif state == STATE_DEGRADED:
-
+    # ── Cluster degraded ──────────────────────────────────
+    elif state == "DEGRADED":
         print("\n======================================")
         print(" Cluster Degraded — Nodes Not Ready")
         print("======================================\n")
@@ -320,22 +663,19 @@ def main():
         print("  Upgrading a degraded cluster is risky.\n")
         subprocess.run("kubectl get nodes -o wide", shell=True)
         print()
-
-        choice = input("Continue anyway? (yes/no): ").strip().lower()
-        if choice != "yes":
-            print("\nExiting. Fix node issues first.\n")
+        if input("Continue anyway? (yes/no): ").strip().lower() != "yes":
+            print("\nExiting.\n")
             return
 
-    # ─────────────────────────────────────────
-    # HEALTHY → RUN DISCOVERY + UPGRADE FLOW
-    # ─────────────────────────────────────────
+    # ── 7. HEALTHY → DISCOVERY + UPGRADE ─────────────────
     run_playbook("playbooks/discovery.yaml", mode=mode)
-    run_playbook("playbooks/precheck.yaml", mode=mode)
+    run_playbook("playbooks/precheck.yaml",  mode=mode)
 
     if not os.path.exists("output/discovery_raw.json"):
         print("ERROR: discovery_raw.json not found")
         sys.exit(1)
 
+    from modules.discovery import load_discovery_data
     data = load_discovery_data()
     run_upgrade_flow(data, mode=mode)
 
