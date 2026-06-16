@@ -639,6 +639,47 @@ echo "WORKER_JOINED"
 # ─────────────────────────────────────────────────────────
 # UPGRADE FLOW
 # ─────────────────────────────────────────────────────────
+def _check_kubelet_versions(target_version, mode, remote_config=None):
+    """
+    Check if kubelet on any node is behind the target version.
+    Returns list of nodes with outdated kubelet, or empty list if all up to date.
+    This detects the case where kubeadm apply succeeded but kubelet upgrade
+    was interrupted — API server at v1.36.2 but kubelet still at v1.36.0.
+    """
+    behind_nodes = []
+    try:
+        if mode == "remote" and remote_config:
+            from modules.remote_connection import ssh_run
+            result = ssh_run(
+                remote_config["host"], remote_config["user"],
+                "kubectl get nodes -o json 2>/dev/null",
+                port=remote_config.get("port", 22),
+                ssh_key=remote_config.get("ssh_key"),
+                password=remote_config.get("_session_password"),
+                timeout=15
+            )
+        else:
+            import subprocess
+            result = subprocess.run(
+                "kubectl get nodes -o json",
+                shell=True, capture_output=True, text=True
+            )
+
+        import json
+        data = json.loads(result.stdout)
+        for node in data.get("items", []):
+            name    = node["metadata"]["name"]
+            kubelet = node["status"]["nodeInfo"]["kubeletVersion"]
+            if kubelet != target_version:
+                behind_nodes.append(f"{name} (kubelet={kubelet})")
+                print(f"  ⚠ Node {name}: kubelet={kubelet} but API server={target_version}")
+
+    except Exception as e:
+        print(f"  [WARN] Could not check kubelet versions: {e}")
+
+    return behind_nodes
+
+
 def run_upgrade_flow(data, mode="local"):
 
     from modules.discovery              import detect_cluster_info
@@ -720,16 +761,34 @@ def run_upgrade_flow(data, mode="local"):
 
     if current_version and stable_version:
         if current_version == stable_version:
-            print("\n  ✔ Already on stable version — no upgrade required")
-            save_inventory(inventory)
-            save_application_inventory(applications)
-            # Generate discovery report even when no upgrade needed
-            generate_discovery_report(
-                inventory, node_details,
-                detected_components, helm_releases
+            print("\n  ✔ API server already on stable version — checking node binaries...")
+
+            # Even if API server is at target version,
+            # kubelet/kubectl on nodes may be behind (happens when upgrade
+            # was interrupted after kubeadm apply but before kubelet upgrade)
+            _kubelet_behind = _check_kubelet_versions(
+                current_version, mode, remote_config=_remote_config_ref
             )
-            print("\nDone.\n")
-            return
+
+            if not _kubelet_behind:
+                print("  ✔ All node binaries up to date — no upgrade required")
+                save_inventory(inventory)
+                save_application_inventory(applications)
+                generate_discovery_report(
+                    inventory, node_details,
+                    detected_components, helm_releases
+                )
+                print("\nDone.\n")
+                return
+            else:
+                print(f"  ⚠ Kubelet behind on nodes: {_kubelet_behind}")
+                print(f"  [INFO] Will upgrade kubelet/kubectl to match API server...")
+                # Force upgrade flow to run kubelet upgrade only
+                # by setting current_version to one below
+                parts = current_version.lstrip("v").split(".")
+                current_version = f"v{parts[0]}.{parts[1]}.0"
+                inventory["current_version"] = current_version
+                print(f"  [INFO] Setting current_version to {current_version} to trigger kubelet upgrade")
         else:
             print("\n  ⚠ Upgrade available")
     else:
