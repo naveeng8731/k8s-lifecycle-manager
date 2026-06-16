@@ -796,14 +796,33 @@ def run_upgrade_flow(data, mode="local"):
             else:
                 print(f"  ⚠ Kubelet behind on nodes: {_kubelet_behind}")
                 print(f"  [INFO] Will upgrade kubelet/kubectl to match API server...")
-                # Force upgrade flow to run kubelet upgrade only
-                # by setting current_version to one below
-                parts = current_version.lstrip("v").split(".")
-                current_version = f"v{parts[0]}.{parts[1]}.0"
+
+                # Get actual kubelet version from node info
+                # Use the real kubelet version as current — not a guess
+                # This ensures build_upgrade_plan creates correct phases
+                # e.g. kubelet=v1.32.13, API=v1.36.2 → needs all phases from v1.32.13
+                import re as _re
+                kubelet_ver = None
+                for node_info in _kubelet_behind:
+                    # node_info format: "nodename (kubelet=v1.32.13)"
+                    m = _re.search("kubelet=(v[\\d.]+)", node_info)
+                    if m:
+                        kubelet_ver = m.group(1)
+                        break
+
+                if kubelet_ver:
+                    current_version = kubelet_ver
+                    print(f"  [INFO] Using actual kubelet version: {current_version}")
+                else:
+                    # Fallback — one minor below stable
+                    parts = stable_version.lstrip("v").split(".")
+                    minor = int(parts[1]) - 1
+                    current_version = f"v{parts[0]}.{minor}.0"
+                    print(f"  [INFO] Fallback current_version: {current_version}")
+
                 inventory["current_version"] = current_version
-                # Also update cluster_version — build_upgrade_plan reads this field
-                inventory["cluster_version"] = current_version
-                print(f"  [INFO] Setting current_version to {current_version} to trigger kubelet upgrade")
+                inventory["cluster_version"]  = current_version
+                print(f"  [INFO] Upgrade will run from kubelet version: {current_version} → {stable_version}")
         else:
             print("\n  ⚠ Upgrade available")
     else:
