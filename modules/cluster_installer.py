@@ -162,6 +162,57 @@ def ask_node_ip():
 
 
 # ─────────────────────────────────────────────────────────
+# POD NETWORK CIDR SELECTION
+# Auto-detects a safe CIDR that does not overlap with
+# the server's own network. User can override if needed.
+# ─────────────────────────────────────────────────────────
+def ask_pod_cidr(node_ip):
+    """
+    Suggest a pod network CIDR that does not conflict
+    with the server's own IP range, then let user confirm.
+
+    Rule: Pod CIDR must NOT overlap with server network.
+    Example: server on 192.168.x.x → use 10.244.0.0/16
+    """
+
+    # Detect server network range
+    if node_ip.startswith("192.168."):
+        suggested = "10.244.0.0/16"
+        reason    = "server is on 192.168.x.x — using 10.244.0.0/16 to avoid conflict"
+    elif node_ip.startswith("10."):
+        suggested = "192.168.0.0/16"
+        reason    = "server is on 10.x.x.x — using 192.168.0.0/16 to avoid conflict"
+    elif node_ip.startswith("172."):
+        suggested = "10.244.0.0/16"
+        reason    = "server is on 172.x.x.x — using 10.244.0.0/16 to avoid conflict"
+    else:
+        suggested = "10.244.0.0/16"
+        reason    = "default safe range"
+
+    print(f"\n  [INFO] Pod Network CIDR Selection")
+    print(f"  ─────────────────────────────────────────────")
+    print(f"  Server IP     : {node_ip}")
+    print(f"  Suggested CIDR: {suggested}  ({reason})")
+    print(f"\n  This is the internal IP range for pods inside the cluster.")
+    print(f"  It must NOT overlap with your server network.\n")
+    print(f"  Options:")
+    print(f"    1) {suggested}  ← recommended (auto-detected safe range)")
+    print(f"    2) Enter custom CIDR manually")
+    print()
+
+    choice = input("  Choose [1/2] or press Enter for default: ").strip()
+
+    if choice == "2":
+        custom = input(f"  Enter pod network CIDR: ").strip()
+        if custom:
+            print(f"\n  ✔ Using custom CIDR: {custom}")
+            return custom
+
+    print(f"\n  ✔ Using CIDR: {suggested}")
+    return suggested
+
+
+# ─────────────────────────────────────────────────────────
 # CLUSTER TYPE WIZARD
 # ─────────────────────────────────────────────────────────
 def ask_cluster_type():
@@ -329,13 +380,18 @@ def install_k8s_tools(version):
     print("  ✔ kubeadm, kubelet, kubectl installed and held")
 
 
-def kubeadm_init(version, pod_cidr="192.168.0.0/16", node_ip=None):
+def kubeadm_init(version, pod_cidr=None, node_ip=None):
     print(f"\n[STEP 6] Initializing Kubernetes control plane...\n")
 
-    # Always ask user to confirm the IP
-    # This prevents the 'node not ready' issue on multi-interface machines
+    # Step 1: Ask user to confirm the correct node IP
+    # Prevents 'node not ready' on multi-interface machines
     if node_ip is None:
         node_ip = ask_node_ip()
+
+    # Step 2: Ask user to confirm a safe pod network CIDR
+    # Auto-detects a range that does not conflict with server network
+    if pod_cidr is None:
+        pod_cidr = ask_pod_cidr(node_ip)
 
     print(f"\n  Node IP    : {node_ip}")
     print(f"  Pod CIDR   : {pod_cidr}")
