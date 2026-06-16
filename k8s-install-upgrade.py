@@ -868,6 +868,33 @@ def main():
 
         if _raw_state == "HEALTHY":
             state = "HEALTHY"
+
+            # Check for cordoned nodes — left over from a previous failed upgrade
+            # Auto-uncordon so pods can schedule and upgrade can continue
+            _password = remote_config.get("_session_password")
+            from modules.remote_connection import ssh_run
+            cordon_check = ssh_run(
+                remote_config["host"], remote_config["user"],
+                "kubectl get nodes --no-headers | grep SchedulingDisabled | awk '{print $1}'",
+                port=remote_config.get("port", 22),
+                ssh_key=remote_config.get("ssh_key"),
+                password=_password, timeout=15
+            )
+            cordoned = [n.strip() for n in cordon_check.stdout.strip().splitlines() if n.strip()]
+            if cordoned:
+                print(f"\n  ⚠ Found cordoned nodes from previous upgrade: {cordoned}")
+                print(f"  [INFO] Auto-uncordoning nodes so pods can schedule...\n")
+                for node in cordoned:
+                    ssh_run(
+                        remote_config["host"], remote_config["user"],
+                        f"kubectl uncordon {node}",
+                        port=remote_config.get("port", 22),
+                        ssh_key=remote_config.get("ssh_key"),
+                        password=_password, timeout=15
+                    )
+                    print(f"  ✔ Uncordoned: {node}")
+                print()
+
         elif _raw_state == "NOT_INSTALLED":
             state = "NOT_INSTALLED"
         else:
