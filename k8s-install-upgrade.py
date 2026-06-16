@@ -695,8 +695,19 @@ def run_upgrade_flow(data, mode="local"):
         val_set_remote(_remote_config_ref)
 
     version_info    = get_upgrade_information()
-    current_version = version_info.get("current_version") or inventory.get("cluster_version")
+    current_version = version_info.get("current_version")
     stable_version  = version_info.get("stable_version")
+
+    # Debug: show where version came from
+    if not current_version:
+        # version_manager failed — fall back to discovery data
+        # This can happen if kubectl SSH call failed
+        current_version = inventory.get("cluster_version")
+        print(f"  [WARN] version_manager returned None — using discovery data: {current_version}")
+        print(f"         This may be stale. Check SSH connection to server.")
+    else:
+        print(f"  [INFO] Version fetched from server via SSH: {current_version}")
+
     inventory["current_version"] = current_version
     inventory["stable_version"]  = stable_version
 
