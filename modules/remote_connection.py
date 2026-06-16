@@ -89,8 +89,10 @@ PLATFORMS = {
             "Use the PUBLIC IP or Elastic IP of your EC2 instance",
             "Make sure Security Group allows inbound TCP port 22 (SSH)",
             "Make sure Security Group allows inbound TCP port 6443 (Kubernetes API)",
-            "Default username is usually: ubuntu (Ubuntu AMI) or ec2-user (Amazon Linux)",
+            "Default username: ubuntu (Ubuntu AMI) or ec2-user (Amazon Linux)",
             "Use the .pem key file downloaded when you created the EC2 instance",
+            "Set key permissions: chmod 400 ~/.ssh/your-key.pem",
+            "If connecting via VPN → select option 4 (Intranet) instead",
         ]
     },
     "2": {
@@ -100,6 +102,9 @@ PLATFORMS = {
             "Make sure NSG (Network Security Group) allows inbound port 22 and 6443",
             "Default username is what you set during VM creation (e.g. azureuser)",
             "Use the SSH key or password you set during VM creation",
+            "To find Public IP: Azure Portal → Virtual Machine → Overview → Public IP",
+            "To allow ports: Azure Portal → VM → Networking → Add inbound rule",
+            "If connecting via VPN → select option 4 (Intranet) instead",
         ]
     },
     "3": {
@@ -109,15 +114,18 @@ PLATFORMS = {
             "Make sure Firewall Rules allow inbound port 22 and 6443",
             "Default username is your Google account username or what you configured",
             "Use the SSH key from GCP Console → Metadata → SSH Keys",
+            "If connecting via VPN → select option 4 (Intranet) instead",
         ]
     },
     "4": {
-        "name":  "On-premise / Intranet / Office Network",
+        "name":  "On-premise / Intranet / Office Network / VPN",
         "notes": [
             "Use the private IP of the server (e.g. 192.168.x.x or 10.x.x.x)",
-            "Your laptop must be on the same network (office WiFi / VPN)",
+            "Your laptop must be on the same network or connected via VPN",
             "Make sure the server firewall allows port 22 (SSH) and 6443 (k8s API)",
             "Username is whatever was set when the server was created",
+            "Also use this option if connecting to AWS / Azure / GCP via VPN",
+            "VPN gives you a private IP — treat it the same as office network",
         ]
     },
     "5": {
@@ -126,7 +134,7 @@ PLATFORMS = {
             "Use the PUBLIC IP of your server",
             "Make sure firewall allows port 22 (SSH) and 6443 (Kubernetes API)",
             "Username is usually: root or ubuntu depending on your provider",
-            "Check your provider's dashboard for the server IP and credentials",
+            "Check your provider dashboard for the server IP and credentials",
         ]
     },
 }
