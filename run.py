@@ -276,7 +276,33 @@ def remote_install_cluster(remote_config):
             print(f"    Worker {i}      : {w}")
     print()
 
-    confirm = input("  Proceed with installation on the remote server? (yes/no): ").strip().lower()
+    # Ask which IP to use for kubeadm init
+    # This fixes the "node not ready" issue when server has multiple interfaces
+    print("\n  [INFO] Fetching network interfaces from server...")
+    ip_result = ssh_run(
+        host, user,
+        "hostname -I",
+        port=port, ssh_key=ssh_key, password=password
+    )
+    all_ips = [ip for ip in ip_result.stdout.strip().split()
+               if not ip.startswith("127.") and ":" not in ip]
+
+    node_ip = all_ips[0] if all_ips else host
+
+    if len(all_ips) > 1:
+        print(f"\n  ⚠  Multiple network interfaces found on {host}:")
+        for i, ip in enumerate(all_ips, 1):
+            marker = " ← auto-selected" if ip == node_ip else ""
+            print(f"    {i}) {ip}{marker}")
+        print(f"\n  Select the IP that your laptop and other nodes can reach.")
+        print(f"  This will be the Kubernetes API server address (port 6443).")
+        user_ip = input(f"  Enter correct IP [default: {node_ip}]: ").strip()
+        if user_ip:
+            node_ip = user_ip
+    else:
+        print(f"  [INFO] Using IP: {node_ip}")
+
+    confirm = input("\n  Proceed with installation on the remote server? (yes/no): ").strip().lower()
     if confirm != "yes":
         print("\n  Installation aborted.\n")
         return False
@@ -319,8 +345,7 @@ sudo apt-mark hold kubeadm kubelet kubectl
 sudo systemctl enable kubelet
 
 echo "=== STEP 6: kubeadm init ==="
-NODE_IP=$(hostname -I | awk '{{print $1}}')
-sudo kubeadm init --kubernetes-version={k8s_version} --pod-network-cidr=192.168.0.0/16 --apiserver-advertise-address=$NODE_IP --node-name=$(hostname) 2>&1 | tee /tmp/kubeadm_init.log
+sudo kubeadm init --kubernetes-version={k8s_version} --pod-network-cidr=192.168.0.0/16 --apiserver-advertise-address={node_ip} --node-name=$(hostname) 2>&1 | tee /tmp/kubeadm_init.log
 
 echo "=== STEP 7: Configure kubectl ==="
 mkdir -p $HOME/.kube
