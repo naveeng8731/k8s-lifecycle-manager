@@ -596,8 +596,10 @@ def setup_remote_connection():
 
     print(f"\n  ✔ Remote connection established\n")
 
-    # Store password in memory for this session only — never saved to disk
+    # Store in config for this session only — never saved to disk
     config["_session_password"] = password
+    config["_cluster_state"]    = state        # reused by main() — avoids duplicate check
+    config["_node_count"]       = node_count   # reused by main()
     return config
 
 
