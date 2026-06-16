@@ -537,6 +537,19 @@ echo "=== STEP 8: Install Calico CNI ==="
 sleep 15
 kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
 
+echo "=== STEP 9: Install etcdctl (needed for etcd backups during upgrades) ==="
+if ! which etcdctl > /dev/null 2>&1; then
+    ETCD_VER=v3.5.0
+    curl -sLO https://github.com/etcd-io/etcd/releases/download/${{ETCD_VER}}/etcd-${{ETCD_VER}}-linux-amd64.tar.gz
+    tar -xf etcd-${{ETCD_VER}}-linux-amd64.tar.gz
+    sudo mv etcd-${{ETCD_VER}}-linux-amd64/etcdctl /usr/local/bin/
+    sudo chmod +x /usr/local/bin/etcdctl
+    rm -rf etcd-${{ETCD_VER}}-linux-amd64*
+    echo "etcdctl installed: $(etcdctl version 2>/dev/null | head -1)"
+else
+    echo "etcdctl already installed"
+fi
+
 {"" if cluster_type == "multi" else '''
 echo "=== STEP 9: Remove control-plane taint (single-node) ==="
 kubectl taint nodes --all node-role.kubernetes.io/control-plane- 2>/dev/null || true
@@ -788,6 +801,8 @@ def run_upgrade_flow(data, mode="local"):
                 parts = current_version.lstrip("v").split(".")
                 current_version = f"v{parts[0]}.{parts[1]}.0"
                 inventory["current_version"] = current_version
+                # Also update cluster_version — build_upgrade_plan reads this field
+                inventory["cluster_version"] = current_version
                 print(f"  [INFO] Setting current_version to {current_version} to trigger kubelet upgrade")
         else:
             print("\n  ⚠ Upgrade available")
