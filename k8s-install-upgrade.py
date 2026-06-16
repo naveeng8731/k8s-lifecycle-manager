@@ -763,7 +763,7 @@ def run_upgrade_flow(data, mode="local"):
         print("\n=== EXECUTION STARTED ===\n")
         confirm = input("Proceed with upgrade? (yes/no): ").strip().lower()
         if confirm == "yes":
-            success = execute_upgrade(upgrade_plan, nodes, mode=mode)
+            success = execute_upgrade(upgrade_plan, nodes, mode=mode, remote_config=_remote_config_ref)
 
             # Generate upgrade report — shows what completed, what failed
             generate_upgrade_report(
