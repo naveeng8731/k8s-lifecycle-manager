@@ -442,6 +442,40 @@ def install_calico():
     print("  ✔ Calico CNI installed")
 
 
+def install_etcdctl():
+    """
+    Install etcdctl — the CLI tool to backup/restore etcd.
+    etcd POD runs inside Kubernetes but etcdctl binary
+    must be installed separately on the control plane node.
+    Without etcdctl, etcd backups before upgrades will be skipped.
+    """
+    print("\n[STEP] Installing etcdctl...\n")
+
+    # Check if already installed
+    import shutil
+    if shutil.which("etcdctl"):
+        print("  [INFO] etcdctl already installed — skipping")
+        run("etcdctl version")
+        return
+
+    ETCD_VER = "v3.5.0"
+    rc = run(
+        f"curl -sLO https://github.com/etcd-io/etcd/releases/download/{ETCD_VER}/"
+        f"etcd-{ETCD_VER}-linux-amd64.tar.gz && "
+        f"tar -xf etcd-{ETCD_VER}-linux-amd64.tar.gz && "
+        f"sudo mv etcd-{ETCD_VER}-linux-amd64/etcdctl /usr/local/bin/ && "
+        f"sudo chmod +x /usr/local/bin/etcdctl && "
+        f"rm -rf etcd-{ETCD_VER}-linux-amd64*"
+    )
+    if rc != 0:
+        print("  \u26a0 etcdctl install failed — backups will be skipped during upgrades")
+        print("    Install manually: https://github.com/etcd-io/etcd/releases")
+        return
+
+    run("etcdctl version")
+    print("  ✔ etcdctl installed — etcd backups enabled")
+
+
 def untaint_control_plane():
     print("\n[STEP 9] Removing control-plane taint (single-node)...\n")
     run(
@@ -638,10 +672,11 @@ def install_fresh_cluster(target_version=None):
         kubeadm_init(target_version)    # Step 6 — asks user to confirm IP
         configure_kubectl()             # Step 7
         install_calico()                # Step 8
+        install_etcdctl()               # Step 9 — needed for etcd backups during upgrades
 
         if cluster_type == "single":
-            untaint_control_plane()     # Step 9 — single node only
-            wait_for_node_ready()       # Step 10
+            untaint_control_plane()     # Step 10 — single node only
+            wait_for_node_ready()       # Step 11
 
         else:
             # Multi-node
