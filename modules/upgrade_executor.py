@@ -5,10 +5,44 @@ import time
 # -------------------------
 # RUN COMMAND
 # -------------------------
+# Global remote config — set by execute_upgrade when in remote mode
+_exec_remote_config = None
+
+
 def run(cmd):
+    """
+    Run a command.
+    Remote mode → runs on server via SSH
+    Local mode  → runs on this machine
+    """
+    global _exec_remote_config
+
     print(f"\n[EXEC] {cmd}\n")
-    result = subprocess.run(cmd, shell=True)
-    return result.returncode
+
+    if _exec_remote_config and _exec_remote_config.get("host"):
+        # Remote mode — run on server via SSH
+        from modules.remote_connection import ssh_run
+        cfg      = _exec_remote_config
+        password = cfg.get("_session_password")
+
+        # Prefix sudo with password if available
+        if password and "sudo " in cmd:
+            cmd = cmd.replace("sudo ", f"echo {password} | sudo -S ", 1)
+
+        result = ssh_run(
+            cfg["host"], cfg["user"], cmd,
+            port=cfg.get("port", 22),
+            ssh_key=cfg.get("ssh_key"),
+            password=password,
+            timeout=300
+        )
+        if result.stdout:
+            print(result.stdout)
+        return result.returncode
+    else:
+        # Local mode — run directly on this machine
+        result = subprocess.run(cmd, shell=True)
+        return result.returncode
 
 
 def cordon_node(node):
@@ -240,11 +274,23 @@ def update_k8s_apt_repo(version):
     )
 
     print(f"\n[INFO] Updating Kubernetes apt repo to {minor_ver}\n")
-    rc = run(f"echo '{repo_line}' | sudo tee /etc/apt/sources.list.d/kubernetes.list")
+
+    # Try with sudo first (needs NOPASSWD), then with password via -S,
+    # then fallback to direct (if running as root)
+    password = getattr(update_k8s_apt_repo, "_sudo_password", None)
+    if password:
+        sudo_prefix = f"echo {password} | sudo -S"
+    else:
+        sudo_prefix = "sudo"
+
+    rc = run(
+        f"echo '{repo_line}' | {sudo_prefix} tee /etc/apt/sources.list.d/kubernetes.list "
+        f"2>/dev/null || echo '{repo_line}' | tee /etc/apt/sources.list.d/kubernetes.list"
+    )
     if rc != 0:
         raise Exception(f"Failed to update apt repo to {minor_ver}")
 
-    rc = run("sudo apt-get update -qq")
+    rc = run(f"{sudo_prefix} apt-get update -qq 2>/dev/null || apt-get update -qq")
     if rc != 0:
         raise Exception("apt-get update failed")
 
@@ -370,7 +416,14 @@ def print_upgrade_summary(original_version, target_version, completed, failed_at
 # -------------------------
 # EXECUTION ENGINE
 # -------------------------
-def execute_upgrade(plan, nodes, mode="local"):
+def execute_upgrade(plan, nodes, mode="local", remote_config=None):
+
+    # Set remote config so run() uses SSH in remote mode
+    global _exec_remote_config
+    if mode == "remote" and remote_config:
+        _exec_remote_config = remote_config
+    else:
+        _exec_remote_config = None
 
     print("\n======================================")
     print(" PRODUCTION UPGRADE EXECUTOR")
