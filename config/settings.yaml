@@ -1,17 +1,38 @@
 # ─────────────────────────────────────────────────────────
 # k8s-lifecycle-manager — Configuration File
 # ─────────────────────────────────────────────────────────
-# DO NOT hardcode IPs or credentials here.
-# When you run:  python3 run.py
-# The wizard will ask for server IP, username, and
-# SSH key or password — then save them here automatically.
-# ─────────────────────────────────────────────────────────
 
 report_path: reports
 output_path: output
-backup_path: backups
 log_path: logs
 cluster_inventory_file: output/cluster_inventory.json
+
+# ─────────────────────────────────────────────────────────
+# BACKUP PATH
+# Where etcd snapshots are saved before each upgrade.
+#
+# Option 1 — Inside project folder (default)
+#   backup_path: output/backups
+#
+# Option 2 — Separate folder on same server
+#   backup_path: /backup/etcd
+#   backup_path: /mnt/backup/k8s
+#
+# Option 3 — NAS / Network drive
+#   backup_path: /mnt/nas/k8s-backups
+#
+# Option 4 — External USB / mounted drive
+#   backup_path: /media/usb/k8s-backups
+#
+# Windows path example (if running locally):
+#   backup_path: D:\Backups\k8s
+#
+# WHY separate location is better for production:
+#   If the server disk fails, backups inside the server
+#   are lost too. Store on a different disk or NAS.
+# ─────────────────────────────────────────────────────────
+backup_path: output/backups
+
 
 health_threshold:
   pod_restart_limit: 10
@@ -23,8 +44,8 @@ discovery:
   detect_storage: true
 
 # ─────────────────────────────────────────────────────────
-# REMOTE — auto-filled by wizard when you run python3 run.py
-# Do not edit manually unless you know what you are doing.
+# REMOTE CONNECTION — auto-filled by wizard
+# Run python3 run.py and the wizard will ask for these.
 # ─────────────────────────────────────────────────────────
 remote:
   host: ""
