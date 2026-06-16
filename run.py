@@ -21,11 +21,23 @@ import argparse
 # Tells user exactly what to install if something is missing.
 # ─────────────────────────────────────────────────────────
 def check_dependencies():
+    """
+    Check required dependencies based on OS.
 
+    Windows:
+      - Does NOT need Ansible (uses SSH kubectl calls instead)
+      - Does NOT need ssh binary (uses paramiko Python library)
+      - Needs: Python, requests, pyyaml, paramiko
+
+    Linux / Mac:
+      - Needs Ansible (runs playbooks locally, SSHes to remote server)
+      - Needs ssh client
+      - Needs: Python, requests, pyyaml, ansible
+    """
     os_type = platform.system().lower()
     errors  = []
 
-    # pip packages
+    # ── Python packages — needed on ALL platforms ─────────
     for pkg, import_name in [("requests", "requests"), ("pyyaml", "yaml")]:
         try:
             __import__(import_name)
@@ -35,21 +47,36 @@ def check_dependencies():
                 f"    Fix: pip install {pkg}"
             )
 
-    # Ansible
-    if not shutil.which("ansible-playbook"):
-        if os_type == "windows":
-            errors.append("Ansible not installed.\n    Fix: pip install ansible")
-        elif os_type == "darwin":
-            errors.append("Ansible not installed.\n    Fix: brew install ansible  OR  pip3 install ansible")
-        else:
-            errors.append("Ansible not installed.\n    Fix: sudo apt install ansible -y  OR  pip3 install ansible")
+    if os_type == "windows":
+        # ── Windows — Ansible NOT needed ──────────────────
+        # Discovery runs via SSH kubectl calls (paramiko)
+        # paramiko is auto-installed when needed
+        print("  [INFO] Windows: Ansible not required")
+        print("         Discovery runs via SSH directly\n")
 
-    # SSH client
-    if not shutil.which("ssh"):
-        if os_type == "windows":
-            errors.append("SSH client not found.\n    Fix: Settings → Apps → Optional Features → OpenSSH Client")
-        else:
-            errors.append("SSH client not found.\n    Fix: sudo apt install openssh-client")
+    else:
+        # ── Linux / Mac — Ansible IS needed ───────────────
+        # Ansible runs on THIS machine and SSHes to remote server
+        if not shutil.which("ansible-playbook"):
+            if os_type == "darwin":
+                errors.append(
+                    "Ansible not installed.\n"
+                    "    Fix: brew install ansible\n"
+                    "         OR: pip3 install ansible"
+                )
+            else:
+                errors.append(
+                    "Ansible not installed.\n"
+                    "    Fix: sudo apt install ansible -y\n"
+                    "         OR: pip3 install ansible"
+                )
+
+        # SSH client needed on Linux/Mac
+        if not shutil.which("ssh"):
+            errors.append(
+                "SSH client not found.\n"
+                "    Fix: sudo apt install openssh-client"
+            )
 
     if errors:
         print("\n" + "="*55)
@@ -121,11 +148,28 @@ def parse_args():
 
 # ─────────────────────────────────────────────────────────
 # RUN PLAYBOOK
+#
+# Ansible does NOT work on Windows natively.
+# In remote mode on Windows: run kubectl commands directly
+# via SSH instead of using ansible-playbook.
+# In local mode or Linux/Mac: use ansible-playbook normally.
 # ─────────────────────────────────────────────────────────
+
+# Global remote config reference for run_playbook to use
+_remote_config_ref = None
+
 def run_playbook(playbook, mode="local"):
 
     print(f"\nRunning {playbook}...\n")
 
+    os_type = platform.system().lower()
+
+    # Windows cannot run Ansible — use SSH-based discovery instead
+    if os_type == "windows" and mode == "remote":
+        _run_playbook_via_ssh(playbook)
+        return
+
+    # Linux / Mac — use ansible-playbook normally
     if mode == "remote":
         cmd = [
             "ansible-playbook", "-i", "inventory/hosts.ini",
@@ -141,6 +185,95 @@ def run_playbook(playbook, mode="local"):
     if result.returncode != 0:
         print(f"\nERROR: {playbook} failed")
         sys.exit(1)
+
+
+def _run_playbook_via_ssh(playbook):
+    """
+    Windows replacement for ansible-playbook.
+    Runs kubectl commands directly on the remote server via SSH
+    and saves the output to the output/ directory locally.
+    Supports: discovery.yaml and precheck.yaml
+    """
+    import json
+
+    global _remote_config_ref
+    if not _remote_config_ref:
+        print(f"  ⚠ No remote config — skipping {playbook}")
+        return
+
+    from modules.remote_connection import ssh_run
+
+    config   = _remote_config_ref
+    host     = config.get("host")
+    user     = config.get("user")
+    port     = config.get("port", 22)
+    ssh_key  = config.get("ssh_key")
+    password = config.get("_session_password")
+
+    os.makedirs("output", exist_ok=True)
+
+    if "discovery" in playbook:
+        print(f"  [SSH] Running discovery on {host}...")
+
+        # Run all kubectl discovery commands
+        cmds = {
+            "version":      "kubectl version -o json 2>/dev/null || echo '{}'",
+            "nodes":        "kubectl get nodes -o json 2>/dev/null || echo '{}'",
+            "pods":         "kubectl get pods -A -o json 2>/dev/null || echo '{}'",
+            "namespaces":   "kubectl get ns -o json 2>/dev/null || echo '{}'",
+            "crds":         "kubectl get crd -o json 2>/dev/null || echo '{}'",
+            "storageclasses":"kubectl get storageclass -o json 2>/dev/null || echo '{}'",
+            "ingress":      "kubectl get ingress -A -o json 2>/dev/null || echo '{}'",
+            "deployments":  "kubectl get deployment -A -o json 2>/dev/null || echo '{}'",
+            "daemonsets":   "kubectl get daemonset -A -o json 2>/dev/null || echo '{}'",
+            "statefulsets": "kubectl get statefulset -A -o json 2>/dev/null || echo '{}'"
+        }
+
+        data = {}
+        for key, cmd in cmds.items():
+            result = ssh_run(host, user, cmd,
+                             port=port, ssh_key=ssh_key, password=password)
+            try:
+                data[key] = json.loads(result.stdout.strip()) if result.stdout.strip() else {}
+            except json.JSONDecodeError:
+                data[key] = {}
+            print(f"    ✔ {key}")
+
+        with open("output/discovery_raw.json", "w") as f:
+            json.dump(data, f, indent=2)
+
+        print(f"  ✔ Discovery complete → output/discovery_raw.json")
+
+    elif "precheck" in playbook:
+        print(f"  [SSH] Running precheck on {host}...")
+
+        cmds = {
+            "nodes":        "kubectl get nodes -o json 2>/dev/null || echo '{}'",
+            "pods":         "kubectl get pods -A -o json 2>/dev/null || echo '{}'",
+            "events":       "kubectl get events -A -o json 2>/dev/null || echo '{}'",
+            "upgrade_plan": "sudo kubeadm upgrade plan 2>/dev/null || echo 'No upgrade plan'"
+        }
+
+        data = {}
+        for key, cmd in cmds.items():
+            result = ssh_run(host, user, cmd,
+                             port=port, ssh_key=ssh_key, password=password)
+            if key == "upgrade_plan":
+                data[key] = result.stdout.strip()
+            else:
+                try:
+                    data[key] = json.loads(result.stdout.strip()) if result.stdout.strip() else {}
+                except json.JSONDecodeError:
+                    data[key] = {}
+            print(f"    ✔ {key}")
+
+        with open("output/precheck_raw.json", "w") as f:
+            json.dump(data, f, indent=2)
+
+        print(f"  ✔ Precheck complete → output/precheck_raw.json")
+
+    else:
+        print(f"  [INFO] Skipping {playbook} on Windows (not needed)")
 
 
 # ─────────────────────────────────────────────────────────
@@ -641,6 +774,10 @@ def main():
 
         # Auto-update inventory/hosts.ini
         update_inventory(remote_config)
+
+        # Store reference so run_playbook can use SSH on Windows
+        global _remote_config_ref
+        _remote_config_ref = remote_config
 
     # ── 5. DETECT CLUSTER STATE ───────────────────────────
     # In remote mode: reuse the state already detected during
