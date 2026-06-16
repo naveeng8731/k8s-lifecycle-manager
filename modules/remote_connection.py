@@ -388,12 +388,22 @@ def interactive_connection_wizard():
             print(f"     If connection fails, use SSH key auth instead.")
     else:
         # SSH key auth
-        # Suggest .pem for AWS
+        # Auto-detect the correct default path based on OS and platform
+
+        os_type = get_platform()
+
         if platform_key == "1":
+            # AWS uses .pem files
             default_key = "~/.ssh/my-key.pem"
             print(f"\n  ℹ  AWS uses .pem key files downloaded from EC2 console.")
             print(f"     Make sure permissions are set: chmod 400 ~/.ssh/my-key.pem")
+        elif os_type == "windows":
+            # Windows default SSH key location
+            import os as _os
+            win_user = _os.environ.get("USERPROFILE", "C:\\Users\\user")
+            default_key = win_user + "\\.ssh\\id_rsa"
         else:
+            # Linux / Mac
             default_key = "~/.ssh/id_rsa"
 
         key_input = input(f"\n  Path to SSH private key [default: {default_key}]: ").strip()
