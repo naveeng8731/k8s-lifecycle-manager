@@ -399,9 +399,18 @@ def interactive_connection_wizard():
             print(f"     Make sure permissions are set: chmod 400 ~/.ssh/my-key.pem")
         elif os_type == "windows":
             # Windows default SSH key location
+            # Check for common key files in order of preference
             import os as _os
             win_user = _os.environ.get("USERPROFILE", "C:\\Users\\user")
-            default_key = win_user + "\\.ssh\\id_rsa"
+            ssh_dir  = win_user + "\\.ssh\\"
+            # Check which key files exist and suggest the first found
+            for key_name in ["naveeng.pem", "id_rsa", "id_ed25519"]:
+                candidate = ssh_dir + key_name
+                if _os.path.exists(candidate):
+                    default_key = candidate
+                    break
+            else:
+                default_key = ssh_dir + "id_rsa"
         else:
             # Linux / Mac
             default_key = "~/.ssh/id_rsa"
