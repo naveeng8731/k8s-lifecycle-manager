@@ -795,34 +795,34 @@ def run_upgrade_flow(data, mode="local"):
                 return
             else:
                 print(f"  ⚠ Kubelet behind on nodes: {_kubelet_behind}")
-                print(f"  [INFO] Will upgrade kubelet/kubectl to match API server...")
+                print(f"  [INFO] Will upgrade kubelet/kubectl directly to {stable_version}...")
 
-                # Get actual kubelet version from node info
-                # Use the real kubelet version as current — not a guess
-                # This ensures build_upgrade_plan creates correct phases
-                # e.g. kubelet=v1.32.13, API=v1.36.2 → needs all phases from v1.32.13
-                import re as _re
-                kubelet_ver = None
-                for node_info in _kubelet_behind:
-                    # node_info format: "nodename (kubelet=v1.32.13)"
-                    m = _re.search("kubelet=(v[\\d.]+)", node_info)
-                    if m:
-                        kubelet_ver = m.group(1)
-                        break
+                # When API server is already at stable but kubelet is behind:
+                # DO NOT run full upgrade phases (kubeadm apply would fail/downgrade)
+                # Instead: upgrade kubelet+kubectl DIRECTLY to stable version
+                # This is safe — kubelet can jump versions when API server is already there
+                print(f"  [INFO] Upgrading kubelet+kubectl directly to {stable_version} (skipping kubeadm apply)")
+                print(f"  [INFO] API server already at {stable_version} — only kubelet upgrade needed")
 
-                if kubelet_ver:
-                    current_version = kubelet_ver
-                    print(f"  [INFO] Using actual kubelet version: {current_version}")
-                else:
-                    # Fallback — one minor below stable
-                    parts = stable_version.lstrip("v").split(".")
-                    minor = int(parts[1]) - 1
-                    current_version = f"v{parts[0]}.{minor}.0"
-                    print(f"  [INFO] Fallback current_version: {current_version}")
+                from modules.upgrade_executor import upgrade_node_binaries, update_k8s_apt_repo, _exec_remote_config
+                import modules.upgrade_executor as _ue
 
-                inventory["current_version"] = current_version
-                inventory["cluster_version"]  = current_version
-                print(f"  [INFO] Upgrade will run from kubelet version: {current_version} → {stable_version}")
+                if mode == "remote" and _remote_config_ref:
+                    _ue._exec_remote_config = _remote_config_ref
+
+                try:
+                    update_k8s_apt_repo(stable_version)
+                    upgrade_node_binaries(stable_version)
+                    print(f"\n  ✔ kubelet + kubectl upgraded to {stable_version}")
+                    print(f"  ✔ Cluster fully at {stable_version}")
+                except Exception as _ke:
+                    print(f"  ❌ kubelet upgrade failed: {_ke}")
+
+                save_inventory(inventory)
+                save_application_inventory(applications)
+                generate_discovery_report(inventory, node_details, detected_components, helm_releases)
+                print("\nDone.\n")
+                return
         else:
             print("\n  ⚠ Upgrade available")
     else:
