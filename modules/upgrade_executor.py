@@ -57,12 +57,26 @@ def uncordon_node(node):
 # DETECT SINGLE NODE
 # -------------------------
 def is_single_node():
+    """Check node count — runs via SSH in remote mode"""
     try:
-        result = subprocess.run(
-            "kubectl get nodes --no-headers | wc -l",
-            shell=True, capture_output=True, text=True
-        )
-        return int(result.stdout.strip()) == 1
+        if _exec_remote_config and _exec_remote_config.get("host"):
+            from modules.remote_connection import ssh_run
+            cfg = _exec_remote_config
+            result = ssh_run(
+                cfg["host"], cfg["user"],
+                "kubectl get nodes --no-headers | wc -l",
+                port=cfg.get("port", 22),
+                ssh_key=cfg.get("ssh_key"),
+                password=cfg.get("_session_password"),
+                timeout=15
+            )
+            return int(result.stdout.strip()) == 1
+        else:
+            result = subprocess.run(
+                "kubectl get nodes --no-headers | wc -l",
+                shell=True, capture_output=True, text=True
+            )
+            return int(result.stdout.strip()) == 1
     except Exception:
         return False
 
@@ -269,32 +283,31 @@ def update_k8s_apt_repo(version):
     minor_ver = f"v{parts[0]}.{parts[1]}"
     repo_url  = f"https://pkgs.k8s.io/core:/stable:/{minor_ver}/deb/"
     repo_file = "/etc/apt/sources.list.d/kubernetes.list"
+    repo_line = f"deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] {repo_url} /"
 
     print(f"\n[INFO] Updating Kubernetes apt repo to {minor_ver}\n")
 
-    # Write repo file on the remote server using printf (no heredoc, no quoting issues)
-    # printf works correctly over SSH unlike echo or heredoc
-    rc = run(
-        f"printf '%s\\n' "
-        f"'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] {repo_url} /' "
-        f"| sudo tee {repo_file} > /dev/null"
-    )
+    # Get password from remote config for sudo -S
+    pw = ""
+    if _exec_remote_config:
+        pw = _exec_remote_config.get("_session_password") or ""
+
+    # Build sudo command — with password via stdin if available
+    if pw:
+        sudo = f"echo '{pw}' | sudo -S"
+    else:
+        sudo = "sudo"
+
+    # Write repo file then update
+    rc = run(f"{sudo} bash -c \"echo '{repo_line}' > {repo_file}\"")
     if rc != 0:
         raise Exception(f"Failed to write apt repo file to {repo_file}")
 
-    # Verify file has content
-    rc = run(f"test -s {repo_file}")
-    if rc != 0:
-        raise Exception(f"Repo file empty after write: {repo_file}")
-
-    rc = run("sudo apt-get update -qq")
+    rc = run(f"{sudo} apt-get update -qq")
     if rc != 0:
         raise Exception("apt-get update failed")
 
     return minor_ver
-
-
-
 def upgrade_kubeadm(version):
 
     ver = version.lstrip("v")
