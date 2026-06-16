@@ -45,6 +45,25 @@ def run(cmd):
         return result.returncode
 
 
+def run_capture(cmd):
+    """Run command and return stdout as string (for version checks)"""
+    global _exec_remote_config
+    if _exec_remote_config and _exec_remote_config.get("host"):
+        from modules.remote_connection import ssh_run
+        cfg = _exec_remote_config
+        result = ssh_run(
+            cfg["host"], cfg["user"], cmd,
+            port=cfg.get("port", 22),
+            ssh_key=cfg.get("ssh_key"),
+            password=cfg.get("_session_password"),
+            timeout=15
+        )
+        return result.stdout if result.returncode == 0 else None
+    else:
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        return result.stdout if result.returncode == 0 else None
+
+
 def cordon_node(node):
     return run(f"kubectl cordon {node}")
 
@@ -486,6 +505,22 @@ def execute_upgrade(plan, nodes, mode="local", remote_config=None):
             print(f"  PHASE {i}/{total_phases}  :  {version}")
             print(f"{'='*50}\n")
 
+            # STEP 0: etcd backup before each phase
+            # Runs on the server via SSH — backup saved in output/backups/
+            print(f"  [INFO] Taking etcd backup before phase {i}...")
+            try:
+                from modules.backup_manager import take_etcd_snapshot, set_remote_config as bm_set_remote
+                if _exec_remote_config:
+                    bm_set_remote(_exec_remote_config)
+                take_etcd_snapshot(version)
+                print(f"  ✔ etcd backup complete")
+            except Exception as be:
+                print(f"  ⚠ etcd backup skipped: {be}")
+                print(f"     Install etcdctl on server to enable backups:")
+                print(f"     sudo mv etcd-*/etcdctl /usr/local/bin/")
+                # Continue upgrade even if backup fails
+                # Backup is important but should not block the upgrade
+
             # STEP 1: Upgrade kubeadm
             upgrade_kubeadm(version)
 
@@ -498,8 +533,42 @@ def execute_upgrade(plan, nodes, mode="local", remote_config=None):
                 state["cordoned_nodes"].append(node)
 
             # STEP 3: Upgrade control plane
-            if run(f"sudo kubeadm upgrade apply {version} -y") != 0:
-                raise Exception(f"kubeadm upgrade apply failed at {version}")
+            # Check if API server already at target version BEFORE running apply
+            # kubeadm apply fails when cluster already at target version
+            api_check = run_capture("kubectl version --output=json 2>/dev/null")
+            api_already_done = False
+            if api_check:
+                try:
+                    import json as _json
+                    _vdata = _json.loads(api_check)
+                    _api_ver = _vdata.get("serverVersion", {}).get("gitVersion", "")
+                    if _api_ver == version:
+                        print(f"  [INFO] API server already at {version} — skipping kubeadm upgrade apply")
+                        api_already_done = True
+                except Exception:
+                    pass
+
+            if not api_already_done:
+                rc = run(f"sudo kubeadm upgrade apply {version} -y")
+                # kubeadm returns 0 on success and non-zero on failure
+                # But some versions return non-zero even when already at target
+                # So we double-check after running
+                if rc != 0:
+                    # Verify if it actually succeeded despite non-zero exit
+                    verify = run_capture("kubectl version --output=json 2>/dev/null")
+                    if verify:
+                        try:
+                            _vd = _json.loads(verify)
+                            _av = _vd.get("serverVersion", {}).get("gitVersion", "")
+                            if _av == version:
+                                print(f"  [INFO] kubeadm apply returned non-zero but API server is at {version} — continuing")
+                            else:
+                                raise Exception(f"kubeadm upgrade apply failed at {version}")
+                        except Exception as _ve:
+                            if "kubeadm upgrade apply failed" in str(_ve):
+                                raise
+                    else:
+                        raise Exception(f"kubeadm upgrade apply failed at {version}")
 
             # STEP 4: Upgrade kubelet + kubectl
             upgrade_node_binaries(version)
