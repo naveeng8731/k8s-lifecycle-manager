@@ -268,31 +268,30 @@ def update_k8s_apt_repo(version):
     parts = ver.split(".")
     minor_ver = f"v{parts[0]}.{parts[1]}"
 
-    repo_line = (
+    repo_content = (
         f"deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] "
         f"https://pkgs.k8s.io/core:/stable:/{minor_ver}/deb/ /"
     )
+    repo_file = "/etc/apt/sources.list.d/kubernetes.list"
 
     print(f"\n[INFO] Updating Kubernetes apt repo to {minor_ver}\n")
 
-    # Try with sudo first (needs NOPASSWD), then with password via -S,
-    # then fallback to direct (if running as root)
-    password = getattr(update_k8s_apt_repo, "_sudo_password", None)
-    if password:
-        sudo_prefix = f"echo {password} | sudo -S"
-    else:
-        sudo_prefix = "sudo"
-
+    # Write repo file using sudo tee with heredoc — avoids shell quoting issues
+    # Then run apt-get update
     rc = run(
-        f"echo '{repo_line}' | {sudo_prefix} tee /etc/apt/sources.list.d/kubernetes.list "
-        f"2>/dev/null || echo '{repo_line}' | tee /etc/apt/sources.list.d/kubernetes.list"
+        "sudo tee " + repo_file + " > /dev/null << 'REPO_EOF'" + "\n" +
+        repo_content + "\n" +
+        "REPO_EOF"
     )
     if rc != 0:
-        raise Exception(f"Failed to update apt repo to {minor_ver}")
+        raise Exception("Failed to write apt repo file to " + repo_file)
 
-    rc = run(f"{sudo_prefix} apt-get update -qq 2>/dev/null || apt-get update -qq")
+    rc = run("sudo apt-get update -qq")
     if rc != 0:
         raise Exception("apt-get update failed")
+
+    # Verify file was written correctly
+    run("cat " + repo_file)
 
     return minor_ver
 
