@@ -296,9 +296,22 @@ def remote_install_cluster(remote_config):
             print(f"    {i}) {ip}{marker}")
         print(f"\n  Select the IP that your laptop and other nodes can reach.")
         print(f"  This will be the Kubernetes API server address (port 6443).")
-        user_ip = input(f"  Enter correct IP [default: {node_ip}]: ").strip()
-        if user_ip:
-            node_ip = user_ip
+        print(f"  Enter the NUMBER (e.g. 1) or the full IP (e.g. 192.168.1.229).")
+        user_input = input(f"  Choose [default: {node_ip}]: ").strip()
+
+        if user_input:
+            # Accept number like "1", "2", "3" OR full IP like "192.168.1.229"
+            if user_input.isdigit():
+                idx = int(user_input) - 1
+                if 0 <= idx < len(all_ips):
+                    node_ip = all_ips[idx]
+                    print(f"  ✔ Selected: {node_ip}")
+                else:
+                    print(f"  ⚠ Invalid number — using default: {node_ip}")
+            else:
+                # User typed the full IP directly
+                node_ip = user_input
+                print(f"  ✔ Using: {node_ip}")
     else:
         print(f"  [INFO] Using IP: {node_ip}")
 
@@ -311,6 +324,36 @@ def remote_install_cluster(remote_config):
     ver = k8s_version.lstrip("v")
     parts = ver.split(".")
     minor_ver = f"v{parts[0]}.{parts[1]}"
+
+    # ── Auto-detect safe pod CIDR ────────────────────────────
+    if node_ip.startswith("192.168."):
+        pod_cidr = "10.244.0.0/16"
+    elif node_ip.startswith("10."):
+        pod_cidr = "192.168.0.0/16"
+    else:
+        pod_cidr = "10.244.0.0/16"
+    print(f"  [INFO] Pod network CIDR : {pod_cidr}")
+
+    # ── Configure passwordless sudo if using password auth ───
+    # Needed when user (e.g. administrator) requires sudo password
+    if password:
+        print(f"\n  [INFO] Configuring sudo access for {user}...")
+        nopasswd = user + " ALL=(ALL) NOPASSWD:ALL"
+        sudoers_file = "/etc/sudoers.d/99-" + user + "-nopasswd"
+        sudoers_cmd = "echo " + password + " | sudo -S bash -c 'echo " + nopasswd + " > " + sudoers_file + "'"
+        sudo_result = ssh_run(
+            host, user, sudoers_cmd,
+            port=port, ssh_key=ssh_key, password=password
+        )
+        if sudo_result.returncode == 0:
+            print(f"  ✔ Sudo configured")
+        else:
+            print(f"  ⚠ Could not configure sudo automatically.")
+            print(f"  Run this on the server first, then re-run:")
+            print(f"    echo \"{user} ALL=(ALL) NOPASSWD:ALL\" | sudo tee /etc/sudoers.d/99-{user}")
+            cont = input("  Continue anyway? (yes/no): ").strip().lower()
+            if cont != "yes":
+                return False
 
     install_script = f"""
 set -e
@@ -345,7 +388,7 @@ sudo apt-mark hold kubeadm kubelet kubectl
 sudo systemctl enable kubelet
 
 echo "=== STEP 6: kubeadm init ==="
-sudo kubeadm init --kubernetes-version={k8s_version} --pod-network-cidr=192.168.0.0/16 --apiserver-advertise-address={node_ip} --node-name=$(hostname) 2>&1 | tee /tmp/kubeadm_init.log
+sudo kubeadm init --kubernetes-version={k8s_version} --pod-network-cidr={pod_cidr} --apiserver-advertise-address={node_ip} --node-name=$(hostname) 2>&1 | tee /tmp/kubeadm_init.log
 
 echo "=== STEP 7: Configure kubectl ==="
 mkdir -p $HOME/.kube
@@ -373,12 +416,24 @@ echo "INSTALL_COMPLETE"
         timeout=600
     )
 
-    print(result.stdout)
+    if result.stdout:
+        print(result.stdout)
+    if result.stderr:
+        print(result.stderr)
 
     if result.returncode != 0 or "INSTALL_COMPLETE" not in result.stdout:
         print(f"\n  ❌ Installation failed on {host}")
-        print(f"  Check the server: ssh {user}@{host}")
-        print(f"  Logs: sudo journalctl -u kubelet -n 50 --no-pager")
+        print(f"\n  Possible causes:")
+        print(f"    1. sudo password required — user needs passwordless sudo")
+        print(f"       Fix on server: echo '{user} ALL=(ALL) NOPASSWD:ALL' | sudo tee /etc/sudoers.d/{user}")
+        print(f"    2. Internet not reachable from server")
+        print(f"       Fix: ping 8.8.8.8  from the server")
+        print(f"    3. Ports blocked — check firewall")
+        print(f"       Fix: sudo ufw status")
+        print(f"\n  Check logs on server:")
+        print(f"    ssh {user}@{host}")
+        print(f"    cat /tmp/kubeadm_init.log")
+        print(f"    sudo journalctl -u kubelet -n 50 --no-pager")
         return False
 
     print(f"\n  ✔ Control plane installed on {host}")
