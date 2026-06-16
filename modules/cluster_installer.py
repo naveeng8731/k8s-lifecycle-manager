@@ -60,7 +60,31 @@ def get_stable_version():
         raise Exception(f"Could not fetch stable version: {e}")
 
 
+def get_all_ips():
+    """Get all non-loopback IPv4 addresses on this machine"""
+    ips = []
+    try:
+        result = subprocess.run(
+            "hostname -I", shell=True, capture_output=True, text=True
+        )
+        for ip in result.stdout.strip().split():
+            if not ip.startswith("127.") and ":" not in ip:  # skip loopback and IPv6
+                ips.append(ip)
+    except Exception:
+        pass
+    return ips
+
+
 def get_node_ip():
+    """
+    Get the best IP for this node.
+    Returns the first non-loopback IPv4 address.
+    Falls back to socket method if hostname -I fails.
+    """
+    ips = get_all_ips()
+    if ips:
+        return ips[0]
+    # Fallback
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -69,6 +93,34 @@ def get_node_ip():
         return ip
     except Exception:
         return "127.0.0.1"
+
+
+def ask_node_ip():
+    """
+    Ask user to confirm or change the detected node IP.
+    This prevents kubeadm from using the wrong interface
+    on machines with multiple network adapters.
+    """
+    all_ips   = get_all_ips()
+    auto_ip   = get_node_ip()
+
+    print(f"\n  [INFO] Network interfaces detected on this server:")
+    for i, ip in enumerate(all_ips, 1):
+        marker = " ← auto-selected" if ip == auto_ip else ""
+        print(f"    {i}) {ip}{marker}")
+
+    if len(all_ips) > 1:
+        print(f"\n  ⚠  Multiple network interfaces found.")
+        print(f"     The wrong IP can cause the node to not register.")
+        print(f"     Select the IP that other nodes/your laptop can reach.\n")
+        print(f"  Enter the correct IP [default: {auto_ip}]: ", end="")
+        user_input = input().strip()
+        if user_input:
+            return user_input
+    else:
+        print(f"\n  [INFO] Using IP: {auto_ip}")
+
+    return auto_ip
 
 
 # ─────────────────────────────────────────────────────────
@@ -252,10 +304,15 @@ def install_k8s_tools(version):
     print("  ✔ kubeadm, kubelet, kubectl installed")
 
 
-def kubeadm_init(version, pod_cidr="192.168.0.0/16"):
+def kubeadm_init(version, pod_cidr="192.168.0.0/16", node_ip=None):
     print(f"\n[STEP 6] Initializing Kubernetes control plane...\n")
-    node_ip = get_node_ip()
-    print(f"  Node IP    : {node_ip}")
+
+    # Ask user to confirm the correct IP if not already provided
+    # This prevents the "node not ready" issue on multi-interface machines
+    if node_ip is None:
+        node_ip = ask_node_ip()
+
+    print(f"\n  Node IP    : {node_ip}")
     print(f"  Pod CIDR   : {pod_cidr}")
     print(f"  K8s version: {version}\n")
 
@@ -270,10 +327,11 @@ def kubeadm_init(version, pod_cidr="192.168.0.0/16"):
     if rc != 0:
         raise Exception(
             "kubeadm init failed. Common causes:\n"
-            "  - swap not disabled    : sudo swapoff -a\n"
-            "  - port 6443 in use     : sudo ss -tlnp | grep 6443\n"
-            "  - containerd not running: sudo systemctl status containerd\n"
-            "  - reset and retry      : sudo kubeadm reset -f"
+            "  - swap not disabled      : sudo swapoff -a\n"
+            "  - port 6443 in use       : sudo ss -tlnp | grep 6443\n"
+            "  - containerd not running : sudo systemctl status containerd\n"
+            "  - wrong IP selected      : check network interfaces\n"
+            "  - reset and retry        : sudo kubeadm reset -f"
         )
     print("  ✔ Control plane initialized")
 
