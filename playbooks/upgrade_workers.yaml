@@ -1,0 +1,78 @@
+---
+# ─────────────────────────────────────────────────────────
+# Worker Node Upgrade Playbook
+# Upgrades kubelet and kubectl on worker nodes
+#
+# Usage:
+#   # Upgrade all workers
+#   ansible-playbook playbooks/upgrade_workers.yaml \
+#     -e k8s_version=v1.36.2
+#
+#   # Upgrade specific worker only
+#   ansible-playbook playbooks/upgrade_workers.yaml \
+#     -e k8s_version=v1.36.2 \
+#     -l worker1
+#
+# Run AFTER control plane upgrade is complete.
+#
+# Note: Normally called by upgrade_executor.py automatically.
+# Use this playbook for manual worker-by-worker upgrades
+# in large production clusters.
+# ─────────────────────────────────────────────────────────
+
+- name: Upgrade Worker Nodes
+  hosts: all
+  gather_facts: false
+
+  vars:
+    target_version: "{{ k8s_version | default('') }}"
+
+  tasks:
+
+    - name: Validate version is set
+      fail:
+        msg: "k8s_version must be set. Example: -e k8s_version=v1.36.2"
+      when: target_version == ''
+
+    - name: Show target version
+      debug:
+        msg: "Upgrading worker to {{ target_version }}"
+
+    - name: Update apt repo to target minor version
+      shell: |
+        MINOR=$(echo {{ target_version }} | sed 's/v//' | cut -d. -f1,2)
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${MINOR}/deb/ /" \
+          | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        sudo apt-get update -qq
+
+    - name: Upgrade kubeadm
+      shell: |
+        VER=$(echo {{ target_version }} | sed 's/v//')
+        sudo apt-get install -y --allow-change-held-packages kubeadm=${VER}-* 2>/dev/null \
+          || sudo apt-get install -y --allow-change-held-packages kubeadm=${VER}
+        sudo apt-mark hold kubeadm
+
+    - name: Run kubeadm upgrade node
+      shell: sudo kubeadm upgrade node
+
+    - name: Upgrade kubelet and kubectl
+      shell: |
+        VER=$(echo {{ target_version }} | sed 's/v//')
+        sudo apt-get install -y --allow-change-held-packages kubelet=${VER}-* kubectl=${VER}-* 2>/dev/null \
+          || sudo apt-get install -y --allow-change-held-packages kubelet=${VER} kubectl=${VER}
+        sudo apt-mark hold kubelet kubectl
+
+    - name: Restart kubelet
+      shell: |
+        sudo systemctl daemon-reload
+        sudo systemctl restart kubelet
+
+    - name: Show node status
+      shell: kubectl get nodes -o wide
+      delegate_to: localhost
+      register: nodes
+      ignore_errors: yes
+
+    - name: Print node status
+      debug:
+        msg: "{{ nodes.stdout_lines }}"

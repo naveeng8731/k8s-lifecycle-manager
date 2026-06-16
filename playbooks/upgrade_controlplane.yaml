@@ -1,0 +1,61 @@
+---
+# ─────────────────────────────────────────────────────────
+# Control Plane Upgrade Playbook
+# Upgrades the control plane to a specific version
+#
+# Usage:
+#   ansible-playbook playbooks/upgrade_controlplane.yaml \
+#     -e k8s_version=v1.36.2
+#
+# This runs AFTER:
+#   1. kubeadm is already upgraded to target version
+#   2. Node is cordoned and drained
+#
+# Note: Normally called by upgrade_executor.py automatically.
+# Use this playbook only for manual control.
+# ─────────────────────────────────────────────────────────
+
+- name: Upgrade Control Plane
+  hosts: all
+  gather_facts: false
+
+  vars:
+    target_version: "{{ k8s_version | default('') }}"
+
+  tasks:
+
+    - name: Validate version is set
+      fail:
+        msg: "k8s_version must be set. Example: -e k8s_version=v1.36.2"
+      when: target_version == ''
+
+    - name: Show target version
+      debug:
+        msg: "Upgrading control plane to {{ target_version }}"
+
+    - name: Check current version
+      shell: kubectl version --output=json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['serverVersion']['gitVersion'])"
+      register: current_version
+      ignore_errors: yes
+
+    - name: Show current version
+      debug:
+        msg: "Current version: {{ current_version.stdout }}"
+
+    - name: Run kubeadm upgrade apply
+      shell: sudo kubeadm upgrade apply {{ target_version }} -y
+      register: upgrade_result
+
+    - name: Upgrade kubelet config
+      shell: |
+        sudo systemctl daemon-reload
+        sudo systemctl restart kubelet
+
+    - name: Verify version after upgrade
+      shell: kubectl version --output=json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['serverVersion']['gitVersion'])"
+      register: new_version
+      ignore_errors: yes
+
+    - name: Show result
+      debug:
+        msg: "Control plane upgraded: {{ current_version.stdout }} → {{ new_version.stdout }}"

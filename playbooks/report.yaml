@@ -1,0 +1,83 @@
+---
+# ─────────────────────────────────────────────────────────
+# Report Generation Playbook
+# Generates a quick cluster health report
+#
+# Usage:
+#   ansible-playbook playbooks/report.yaml
+#
+# Output: output/cluster_report.txt
+# ─────────────────────────────────────────────────────────
+
+- name: Generate Cluster Report
+  hosts: all
+  gather_facts: false
+
+  tasks:
+
+    - name: Ensure output directory exists
+      file:
+        path: "{{ playbook_dir }}/../output"
+        state: directory
+        mode: "0755"
+      delegate_to: localhost
+
+    - name: Get cluster version
+      shell: kubectl version --output=json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['serverVersion']['gitVersion'])"
+      register: version
+      ignore_errors: yes
+
+    - name: Get nodes
+      shell: kubectl get nodes -o wide
+      register: nodes
+      ignore_errors: yes
+
+    - name: Get pods
+      shell: kubectl get pods -A
+      register: pods
+      ignore_errors: yes
+
+    - name: Get namespaces
+      shell: kubectl get ns
+      register: namespaces
+      ignore_errors: yes
+
+    - name: Get storage classes
+      shell: kubectl get storageclass
+      register: storage
+      ignore_errors: yes
+
+    - name: Save report
+      copy:
+        dest: "{{ playbook_dir }}/../output/cluster_report.txt"
+        content: |
+          ============================================================
+          CLUSTER REPORT
+          ============================================================
+
+          Kubernetes Version
+          ------------------
+          {{ version.stdout | default('Unknown') }}
+
+          Nodes
+          ------------------
+          {{ nodes.stdout | default('No data') }}
+
+          Namespaces
+          ------------------
+          {{ namespaces.stdout | default('No data') }}
+
+          Storage Classes
+          ------------------
+          {{ storage.stdout | default('No data') }}
+
+          Pods (All Namespaces)
+          ------------------
+          {{ pods.stdout | default('No data') }}
+
+          ============================================================
+      delegate_to: localhost
+
+    - name: Report saved
+      debug:
+        msg: "Report saved to output/cluster_report.txt"

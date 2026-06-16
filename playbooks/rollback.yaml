@@ -1,0 +1,42 @@
+---
+# ─────────────────────────────────────────────────────────
+# Rollback Playbook
+# Use when upgrade fails and you need to uncordon nodes
+# manually without going through run.py
+#
+# Usage:
+#   ansible-playbook playbooks/rollback.yaml
+#
+# Note: This uncordons nodes only.
+# Binary downgrade (kubeadm/kubelet) must be done manually.
+# ─────────────────────────────────────────────────────────
+
+- name: Kubernetes Rollback
+  hosts: all
+  gather_facts: false
+
+  tasks:
+
+    - name: Get cordoned nodes
+      shell: kubectl get nodes --no-headers | grep SchedulingDisabled | awk '{print $1}'
+      register: cordoned_nodes
+      ignore_errors: yes
+
+    - name: Show cordoned nodes
+      debug:
+        msg: "Cordoned nodes found: {{ cordoned_nodes.stdout_lines }}"
+
+    - name: Uncordon all cordoned nodes
+      shell: kubectl uncordon {{ item }}
+      loop: "{{ cordoned_nodes.stdout_lines | default([]) }}"
+      ignore_errors: yes
+      when: cordoned_nodes.stdout_lines | length > 0
+
+    - name: Show node status after rollback
+      shell: kubectl get nodes -o wide
+      register: node_status
+      ignore_errors: yes
+
+    - name: Print node status
+      debug:
+        msg: "{{ node_status.stdout_lines }}"

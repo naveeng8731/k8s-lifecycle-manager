@@ -637,20 +637,41 @@ echo "WORKER_JOINED"
 def run_upgrade_flow(data, mode="local"):
 
     from modules.discovery              import detect_cluster_info
-    from modules.component_detector     import detect_components
-    from modules.report_generator       import save_inventory, save_application_inventory
+    from modules.component_detector     import (
+        detect_components, get_node_details,
+        get_helm_releases, print_component_summary
+    )
+    from modules.report_generator       import (
+        save_inventory, save_application_inventory,
+        generate_discovery_report, generate_upgrade_report
+    )
     from modules.version_manager        import get_upgrade_information
     from modules.validation             import check_cluster_health
     from modules.application_inventory  import get_application_inventory
     from modules.risk_analyzer          import analyze_risk
-    from modules.compatibility_engine   import check_compatibility
+    from modules.compatibility_engine   import check_compatibility, print_compatibility_report
     from modules.upgrade_engine         import build_upgrade_plan
     from modules.upgrade_executor       import execute_upgrade
     from modules.dependency_engine      import analyze_dependencies
 
     inventory = detect_cluster_info(data)
-    inventory["components"] = detect_components(data)
+
+    # Generic component detection — all categories
+    detected_components = detect_components(data)
+    inventory["components"] = detected_components
+
+    # Node details — OS, Kernel, CPU, Memory, Runtime
+    node_details = get_node_details(data)
+    inventory["node_details"] = node_details
+
+    # Helm releases — detected from pod labels
+    helm_releases = get_helm_releases(data)
+    inventory["helm_releases"] = helm_releases
+
     inventory["mode"] = mode
+
+    # Print component summary
+    print_component_summary(detected_components)
 
     applications = get_application_inventory()
     inventory["applications"] = applications
@@ -679,6 +700,11 @@ def run_upgrade_flow(data, mode="local"):
             print("\n  ✔ Already on stable version — no upgrade required")
             save_inventory(inventory)
             save_application_inventory(applications)
+            # Generate discovery report even when no upgrade needed
+            generate_discovery_report(
+                inventory, node_details,
+                detected_components, helm_releases
+            )
             print("\nDone.\n")
             return
         else:
@@ -691,6 +717,9 @@ def run_upgrade_flow(data, mode="local"):
 
     dependency_report = analyze_dependencies(applications, stable_version, current_version)
     inventory["dependency_report"] = dependency_report
+
+    # Print formatted compatibility report
+    print_compatibility_report(compatibility)
 
     upgrade_plan = build_upgrade_plan(inventory, compatibility, risks)
     inventory["upgrade_plan"] = upgrade_plan
@@ -723,15 +752,37 @@ def run_upgrade_flow(data, mode="local"):
         confirm = input("Proceed with upgrade? (yes/no): ").strip().lower()
         if confirm == "yes":
             success = execute_upgrade(upgrade_plan, nodes, mode=mode)
+
+            # Generate upgrade report — shows what completed, what failed
+            generate_upgrade_report(
+                cluster_name        = inventory.get("cluster_name", "Kubernetes Cluster"),
+                original_version    = current_version,
+                target_version      = stable_version,
+                completed_phases    = upgrade_plan.get("completed_phases", []),
+                failed_at           = None if success else upgrade_plan.get("failed_at"),
+                node_details        = node_details,
+                detected_components = detected_components,
+                dependency_report   = dependency_report,
+            )
+
             if not success:
-                print("\n❌ Upgrade failed — check summary above")
+                print("\n❌ Upgrade failed — check output/upgrade_report.txt for details")
         else:
             print("\nUpgrade aborted by user")
     else:
         print("\nUpgrade not eligible — skipping")
 
+    # Always generate discovery report at end
+    generate_discovery_report(
+        inventory, node_details, detected_components, helm_releases
+    )
+
     save_inventory(inventory)
     save_application_inventory(applications)
+    print("\n  Reports saved:")
+    print("    output/discovery_report.txt")
+    print("    output/upgrade_report.txt")
+    print("    output/cluster_inventory.json")
     print("\nDone.\n")
 
 
