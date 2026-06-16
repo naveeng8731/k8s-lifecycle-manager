@@ -472,11 +472,10 @@ def interactive_connection_wizard():
         "local_kubeconfig":  "~/.kube/remote-config",
     }
 
-    save_input = input(
-        "\n  Save these connection details for future runs? (yes/no): "
-    ).strip().lower()
-    if save_input == "yes":
-        save_remote_config(config)
+    # NOTE: Connection details are NOT saved to settings.yaml
+    # They are entered fresh each run via the wizard.
+    # This keeps the repo clean — no server IPs committed to git.
+    # Password is NEVER saved — only lives in memory this session.
 
     return config, password
 
@@ -542,44 +541,13 @@ def setup_remote_connection():
 
     password = None
 
-    # Check if a real saved config exists
-    # Empty string "" counts as NOT saved — wizard will always run on first use
-    try:
-        config = load_remote_config()
-        host_saved = config.get("host", "").strip()
-        user_saved = config.get("user", "").strip()
-        has_saved  = bool(host_saved and user_saved)
-    except Exception:
-        config    = {}
-        has_saved = False
-
-    if has_saved:
-        # A previous connection was saved — ask if user wants to reuse it
-        print("\n======================================")
-        print(" Remote Connection")
-        print("======================================\n")
-        print(f"  Found saved connection from last run:")
-        print(f"    Host     : {config.get('host')}")
-        print(f"    User     : {config.get('user')}")
-        print(f"    Platform : {config.get('platform', 'not set')}")
-        print(f"    Auth     : {config.get('auth_method', 'key')}")
-        print()
-        print(f"  Press Enter to use this, or type 'new' to connect to a different server.")
-        use_saved = input("  [Enter / new]: ").strip().lower()
-
-        if use_saved == "new":
-            # Run wizard for a new server
-            config, password = interactive_connection_wizard()
-        else:
-            # Reuse saved — only ask for password if password auth
-            if config.get("auth_method") == "password":
-                password = getpass.getpass(
-                    f"  SSH password for {config.get('user')}@{config.get('host')}: "
-                )
-    else:
-        # No saved config — run the full wizard
-        # Wizard will ask: platform, IP, port, username, SSH key or password
-        config, password = interactive_connection_wizard()
+    # Always run the full wizard — never load saved config from disk.
+    # Reasons:
+    #   1. Keeps repo clean — no server IPs in settings.yaml or hosts.ini
+    #   2. Each engineer enters their own server details
+    #   3. Password is never saved — always entered fresh
+    #   4. settings.yaml remote section stays empty (as committed to git)
+    config, password = interactive_connection_wizard()
 
     # Final SSH verify
     print(f"\n  [INFO] Verifying connection to {config['host']}...")

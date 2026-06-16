@@ -1,5 +1,9 @@
 # ─────────────────────────────────────────────────────────
 # k8s-lifecycle-manager — Configuration File
+#
+# The remote section below is NOT used for connection.
+# Connection details are entered via the wizard each run.
+# This file should be committed with empty remote section.
 # ─────────────────────────────────────────────────────────
 
 report_path: reports
@@ -7,32 +11,9 @@ output_path: output
 log_path: logs
 cluster_inventory_file: output/cluster_inventory.json
 
-# ─────────────────────────────────────────────────────────
-# BACKUP PATH
-# Where etcd snapshots are saved before each upgrade.
-#
-# Option 1 — Inside project folder (default)
-#   backup_path: output/backups
-#
-# Option 2 — Separate folder on same server
-#   backup_path: /backup/etcd
-#   backup_path: /mnt/backup/k8s
-#
-# Option 3 — NAS / Network drive
-#   backup_path: /mnt/nas/k8s-backups
-#
-# Option 4 — External USB / mounted drive
-#   backup_path: /media/usb/k8s-backups
-#
-# Windows path example (if running locally):
-#   backup_path: D:\Backups\k8s
-#
-# WHY separate location is better for production:
-#   If the server disk fails, backups inside the server
-#   are lost too. Store on a different disk or NAS.
-# ─────────────────────────────────────────────────────────
+# Set this to a separate disk/NAS for production
+# Default: output/backups
 backup_path: output/backups
-
 
 health_threshold:
   pod_restart_limit: 10
@@ -44,8 +25,9 @@ discovery:
   detect_storage: true
 
 # ─────────────────────────────────────────────────────────
-# REMOTE CONNECTION — auto-filled by wizard
-# Run python3 k8s-install-upgrade.py and the wizard will ask for these.
+# REMOTE — intentionally empty
+# Connection details are entered via wizard at runtime.
+# Never hardcode server IPs here.
 # ─────────────────────────────────────────────────────────
 remote:
   host: ""
