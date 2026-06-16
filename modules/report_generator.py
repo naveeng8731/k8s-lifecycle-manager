@@ -85,7 +85,7 @@ def generate_discovery_report(inventory, node_details, detected_components, helm
 
     report = "\n".join(lines)
 
-    with open("output/discovery_report.txt", "w") as f:
+    with open("output/discovery_report.txt", "w", encoding="utf-8") as f:
         f.write(report)
 
     print(f"\n  [INFO] Discovery report → output/discovery_report.txt")
@@ -180,7 +180,7 @@ def generate_upgrade_report(
 
         for status, apps in status_groups.items():
             if apps:
-                icon = "✔" if status == "SAFE" else "⚠" if "MINOR" in status else "❌"
+                icon = "[OK]" if status == "SAFE" else "[WARN]" if "MINOR" in status else "[FAIL]"
                 lines.append(f"  {icon} {status}:")
                 for app in apps:
                     lines.append(f"      - {app}")
@@ -198,7 +198,7 @@ def generate_upgrade_report(
         lines.append("\n NODE STATUS AFTER UPGRADE")
         lines.append("-" * 60)
         for node in node_details:
-            icon = "✔" if node["status"] == "Ready" else "❌"
+            icon = "[OK]" if node["status"] == "Ready" else "[FAIL]"
             lines.append(
                 f"  {icon} {node['name']:30} "
                 f"{node['role']:15} "
@@ -210,7 +210,7 @@ def generate_upgrade_report(
 
     report = "\n".join(lines)
 
-    with open("output/upgrade_report.txt", "w") as f:
+    with open("output/upgrade_report.txt", "w", encoding="utf-8") as f:
         f.write(report)
 
     print(f"\n  [INFO] Upgrade report → output/upgrade_report.txt")
