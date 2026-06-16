@@ -643,27 +643,32 @@ def main():
         update_inventory(remote_config)
 
     # ── 5. DETECT CLUSTER STATE ───────────────────────────
-    print("\n[INFO] Detecting cluster state...\n")
+    # In remote mode: reuse the state already detected during
+    # setup_remote_connection() — avoids a duplicate SSH check
+    # that fails when password is not passed correctly.
 
     if mode == "remote":
-        # Check cluster state ON THE REMOTE SERVER via SSH
-        from modules.remote_connection import (
-            check_remote_cluster_state, get_remote_nodes
-        )
-        raw_state, node_count = check_remote_cluster_state(remote_config)
+        _password  = remote_config.get("_session_password")
+        _raw_state = remote_config.get("_cluster_state", "UNKNOWN")
+        _node_count= remote_config.get("_node_count", 0)
 
-        print(f"  Remote Server  : {remote_config.get('host')}")
-        print(f"  Platform       : {remote_config.get('platform', 'not set')}")
-        print(f"  Cluster State  : {raw_state}")
+        # If state was not stored, do a fresh check with password
+        if _raw_state == "UNKNOWN":
+            from modules.remote_connection import (
+                check_remote_cluster_state, get_remote_nodes
+            )
+            _raw_state, _node_count = check_remote_cluster_state(
+                remote_config, password=_password
+            )
 
-        if node_count > 0:
-            print(f"  Node Count     : {node_count}")
-            get_remote_nodes(remote_config)
+        print(f"\n[INFO] Cluster state on {remote_config.get('host')}:")
+        print(f"  State      : {_raw_state}")
+        if _node_count > 0:
+            print(f"  Node Count : {_node_count}")
 
-        # Map remote state to standard states
-        if raw_state == "HEALTHY":
+        if _raw_state == "HEALTHY":
             state = "HEALTHY"
-        elif raw_state == "NOT_INSTALLED":
+        elif _raw_state == "NOT_INSTALLED":
             state = "NOT_INSTALLED"
         else:
             state = "UNKNOWN"
