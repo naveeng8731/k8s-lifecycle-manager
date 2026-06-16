@@ -305,14 +305,18 @@ def upgrade_kubeadm(version):
     ver = version.lstrip("v")
     update_k8s_apt_repo(version)
 
-    print(f"\n[INFO] Installing kubeadm={ver}\n")
-    rc = run(
-        f"sudo apt-get install -y --allow-change-held-packages kubeadm={ver}-* "
-        f"|| sudo apt-get install -y --allow-change-held-packages kubeadm={ver}"
+    print(f"\n[INFO] Installing kubeadm for v{ver}\n")
+
+    # Install kubeadm — try versioned first, then latest in repo
+    cmd = (
+        "sudo apt-get install -y --allow-change-held-packages "
+        "kubeadm=" + ver + "-* 2>/dev/null || "
+        "sudo apt-get install -y --allow-change-held-packages kubeadm"
     )
+    rc = run(cmd)
 
     if rc != 0:
-        raise Exception(f"Failed to install kubeadm={ver}")
+        raise Exception("Failed to install kubeadm=" + ver)
 
     run("sudo apt-mark hold kubeadm")
     run("kubeadm version")
@@ -325,17 +329,17 @@ def upgrade_kubeadm(version):
 def upgrade_node_binaries(version):
 
     ver = version.lstrip("v")
-    print(f"\n[INFO] Upgrading kubelet and kubectl to {ver}\n")
+    print(f"\n[INFO] Upgrading kubelet and kubectl to v{ver}\n")
 
-    rc = run(
-        f"sudo apt-get install -y --allow-change-held-packages "
-        f"kubelet={ver}-* kubectl={ver}-* "
-        f"|| sudo apt-get install -y --allow-change-held-packages "
-        f"kubelet={ver} kubectl={ver}"
+    cmd = (
+        "sudo apt-get install -y --allow-change-held-packages "
+        "kubelet=" + ver + "-* kubectl=" + ver + "-* 2>/dev/null || "
+        "sudo apt-get install -y --allow-change-held-packages kubelet kubectl"
     )
+    rc = run(cmd)
 
     if rc != 0:
-        raise Exception(f"Failed to upgrade kubelet/kubectl to {ver}")
+        raise Exception("Failed to upgrade kubelet/kubectl to " + ver)
 
     run("sudo apt-mark hold kubelet kubectl")
     run("sudo systemctl daemon-reload")
