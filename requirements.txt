@@ -2,26 +2,26 @@
 # k8s-lifecycle-manager — Python Dependencies
 #
 # Install with:
-#   pip3 install -r requirements.txt   (Linux/Mac)
 #   pip install -r requirements.txt    (Windows)
+#   pip3 install -r requirements.txt   (Linux / Mac)
 # ─────────────────────────────────────────────────────────
 
-# Fetches the latest stable Kubernetes version from
-# https://dl.k8s.io/release/stable.txt
+# Fetches latest stable Kubernetes version from internet
 requests>=2.28.0
 
 # Reads config/settings.yaml
-# Without this, Python cannot parse YAML config files
 pyyaml>=6.0
 
 # Sends commands to remote server via SSH
-# Only needed on local machine (Windows/Linux/Mac)
-# NOT needed on the Kubernetes server itself
 ansible>=8.0.0
 
+# Pure Python SSH library — used for password-based auth
+# Works on Windows without needing sshpass or any extra tools
+paramiko>=3.0.0
+
 # ─────────────────────────────────────────────────────────
-# NOT REQUIRED:
-#   kubectl  → runs on REMOTE server, not local machine
-#   kubeadm  → runs on REMOTE server, not local machine
-#   kubelet  → runs on REMOTE server, not local machine
+# NOT REQUIRED on your laptop:
+#   kubectl  → runs on the remote server
+#   kubeadm  → runs on the remote server
+#   kubelet  → runs on the remote server
 # ─────────────────────────────────────────────────────────
