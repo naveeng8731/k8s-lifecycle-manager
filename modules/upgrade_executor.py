@@ -267,38 +267,34 @@ def update_k8s_apt_repo(version):
     ver = version.lstrip("v")
     parts = ver.split(".")
     minor_ver = f"v{parts[0]}.{parts[1]}"
-
-    repo_content = (
-        f"deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] "
-        f"https://pkgs.k8s.io/core:/stable:/{minor_ver}/deb/ /"
-    )
+    repo_url  = f"https://pkgs.k8s.io/core:/stable:/{minor_ver}/deb/"
     repo_file = "/etc/apt/sources.list.d/kubernetes.list"
 
     print(f"\n[INFO] Updating Kubernetes apt repo to {minor_ver}\n")
 
-    # Write repo file using sudo tee with heredoc — avoids shell quoting issues
-    # Then run apt-get update
+    # Write repo file on the remote server using printf (no heredoc, no quoting issues)
+    # printf works correctly over SSH unlike echo or heredoc
     rc = run(
-        "sudo tee " + repo_file + " > /dev/null << 'REPO_EOF'" + "\n" +
-        repo_content + "\n" +
-        "REPO_EOF"
+        f"printf '%s\\n' "
+        f"'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] {repo_url} /' "
+        f"| sudo tee {repo_file} > /dev/null"
     )
     if rc != 0:
-        raise Exception("Failed to write apt repo file to " + repo_file)
+        raise Exception(f"Failed to write apt repo file to {repo_file}")
+
+    # Verify file has content
+    rc = run(f"test -s {repo_file}")
+    if rc != 0:
+        raise Exception(f"Repo file empty after write: {repo_file}")
 
     rc = run("sudo apt-get update -qq")
     if rc != 0:
         raise Exception("apt-get update failed")
 
-    # Verify file was written correctly
-    run("cat " + repo_file)
-
     return minor_ver
 
 
-# -------------------------
-# UPGRADE KUBEADM
-# -------------------------
+
 def upgrade_kubeadm(version):
 
     ver = version.lstrip("v")
