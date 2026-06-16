@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import os
 import platform
 import socket
@@ -175,10 +176,46 @@ def test_tcp(host, port=22, timeout=5):
 
 
 # ─────────────────────────────────────────────────────────
-# SSH RUNNER
-# Supports key-based and password-based auth
+# PARAMIKO CHECK
+# paramiko is a pure Python SSH library — works on all OS
+# including Windows with no extra tools needed.
+# Used for password-based auth instead of sshpass.
+# ─────────────────────────────────────────────────────────
+def _paramiko_available():
+    try:
+        import paramiko
+        return True
+    except ImportError:
+        return False
+
+
+def _ensure_paramiko():
+    """Auto-install paramiko if not present"""
+    if _paramiko_available():
+        return True
+    print("\n  [INFO] Installing paramiko for password-based SSH...")
+    result = subprocess.run(
+        [sys.executable, "-m", "pip", "install", "paramiko", "-q"],
+        capture_output=True
+    )
+    if result.returncode == 0:
+        print("  ✔ paramiko installed")
+        return True
+    print("  ❌ Could not install paramiko automatically.")
+    print("  Run manually: pip install paramiko")
+    return False
+
+
+# ─────────────────────────────────────────────────────────
+# SSH RUNNER — works on Windows, Linux, Mac
+#
+# Key auth  → uses system ssh command (always available)
+# Password  → uses paramiko (pure Python, no sshpass needed)
+#             Works on Windows without any extra installs.
 # ─────────────────────────────────────────────────────────
 def ssh_run(host, user, cmd, port=22, ssh_key=None, password=None, timeout=30):
+
+    # ── Key-based auth: use system ssh ────────────────────
     if ssh_key:
         ssh_cmd = [
             "ssh",
@@ -189,27 +226,60 @@ def ssh_run(host, user, cmd, port=22, ssh_key=None, password=None, timeout=30):
             "-o", "BatchMode=yes",
             f"{user}@{host}", cmd
         ]
-    else:
-        if not _sshpass_available():
-            raise Exception(
-                "sshpass is required for password auth.\n"
-                "  Linux : sudo apt install sshpass\n"
-                "  Mac   : brew install sshpass\n"
-                "  Windows: use SSH key instead (recommended)"
-            )
-        ssh_cmd = [
-            "sshpass", "-p", password,
-            "ssh",
-            "-p", str(port),
-            "-o", "StrictHostKeyChecking=no",
-            "-o", "ConnectTimeout=10",
-            f"{user}@{host}", cmd
-        ]
-    return subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=timeout)
+        return subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=timeout)
+
+    # ── Password auth: use paramiko ───────────────────────
+    # paramiko is pure Python — works on Windows without sshpass
+    if not _ensure_paramiko():
+        raise Exception(
+            "paramiko is required for password auth.\n"
+            "  Fix: pip install paramiko"
+        )
+
+    import paramiko
+
+    class _Result:
+        """Mimic subprocess.CompletedProcess so callers work unchanged"""
+        def __init__(self, stdout="", stderr="", returncode=0):
+            self.stdout     = stdout
+            self.stderr     = stderr
+            self.returncode = returncode
+
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(
+            hostname=host,
+            port=port,
+            username=user,
+            password=password,
+            timeout=timeout,
+            allow_agent=False,
+            look_for_keys=False
+        )
+
+        _, stdout, stderr = client.exec_command(cmd, timeout=timeout)
+        out = stdout.read().decode("utf-8", errors="replace")
+        err = stderr.read().decode("utf-8", errors="replace")
+        rc  = stdout.channel.recv_exit_status()
+        client.close()
+
+        return _Result(stdout=out, stderr=err, returncode=rc)
+
+    except paramiko.AuthenticationException:
+        return _Result(
+            stdout="",
+            stderr=f"Authentication failed for {user}@{host} — check your password.",
+            returncode=1
+        )
+    except paramiko.SSHException as e:
+        return _Result(stdout="", stderr=str(e), returncode=1)
+    except Exception as e:
+        return _Result(stdout="", stderr=str(e), returncode=1)
 
 
 def _sshpass_available():
-    import shutil
+    """Kept for backwards compatibility — no longer used"""
     return shutil.which("sshpass") is not None
 
 
@@ -544,26 +614,39 @@ def print_local_setup_instructions():
     print("  You only need these on your local machine:\n")
     print("  ┌──────────────────────────────────────────────────┐")
     print("  │  1. Python 3.8+                                   │")
-    print("  │  2. Ansible                                       │")
-    print("  │  3. pip: requests, pyyaml                         │")
-    print("  │  4. sshpass  (only if using password auth)        │")
+    print("  │  2. Git                                           │")
+    print("  │  3. pip install -r requirements.txt               │")
+    print("  │     (installs ansible, requests, pyyaml, paramiko)│")
     print("  └──────────────────────────────────────────────────┘\n")
     print("  ✔ kubectl  → NOT needed (runs on remote server)")
     print("  ✔ kubeadm  → NOT needed (runs on remote server)")
-    print("  ✔ kubelet  → NOT needed (runs on remote server)\n")
+    print("  ✔ kubelet  → NOT needed (runs on remote server)")
+    print("  ✔ sshpass  → NOT needed (paramiko handles password auth)\n")
 
     if os_type == "windows":
         print("  ── WINDOWS ──────────────────────────────────────────")
-        print("  pip install ansible requests pyyaml\n")
-        print("  For password auth: use Git Bash (includes sshpass)\n")
+        print("  Step 1: Install Python 3.8+")
+        print("    https://www.python.org/downloads/")
+        print("    ✔ Check \'Add Python to PATH\' during install\n")
+        print("  Step 2: Install Git")
+        print("    https://git-scm.com/download/win\n")
+        print("  Step 3: Clone and install")
+        print("    git clone https://github.com/naveeng8731/k8s-lifecycle-manager.git")
+        print("    cd k8s-lifecycle-manager")
+        print("    python -m pip install -r requirements.txt")
+        print("    python run.py\n")
+        print("  ℹ  Use \'python\' and \'python -m pip\' on Windows")
+        print("     NOT \'python3\' or \'pip3\'\n")
     elif os_type == "mac":
         print("  ── MAC ──────────────────────────────────────────────")
-        print("  brew install python3 ansible sshpass")
-        print("  pip3 install requests pyyaml\n")
+        print("  brew install python3 git ansible")
+        print("  pip3 install -r requirements.txt")
+        print("  python3 run.py\n")
     else:
         print("  ── LINUX ────────────────────────────────────────────")
-        print("  sudo apt install python3 python3-pip ansible sshpass -y")
-        print("  pip3 install requests pyyaml\n")
+        print("  sudo apt install python3 python3-pip git ansible -y")
+        print("  pip3 install -r requirements.txt")
+        print("  python3 run.py\n")
 
     print("  ── THEN RUN ─────────────────────────────────────────")
     print("  python3 run.py --mode remote")
