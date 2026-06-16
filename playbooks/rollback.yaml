@@ -2,7 +2,7 @@
 # ─────────────────────────────────────────────────────────
 # Rollback Playbook
 # Use when upgrade fails and you need to uncordon nodes
-# manually without going through run.py
+# manually without going through k8s-install-upgrade.py
 #
 # Usage:
 #   ansible-playbook playbooks/rollback.yaml

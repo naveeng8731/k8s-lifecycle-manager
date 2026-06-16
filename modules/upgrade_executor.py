@@ -488,9 +488,9 @@ def execute_upgrade(plan, nodes, mode="local"):
         if choice == "rollback":
             rollback(state)
         elif choice == "retry":
-            print(f"\n[INFO] Re-run: python3 run.py  to continue from {current_stable}")
+            print(f"\n[INFO] Re-run: python3 k8s-install-upgrade.py  to continue from {current_stable}")
         else:
             print(f"\n✔ Cluster stays at {current_stable}")
-            print(f"  Re-run: python3 run.py  to continue upgrade later")
+            print(f"  Re-run: python3 k8s-install-upgrade.py  to continue upgrade later")
 
         return False

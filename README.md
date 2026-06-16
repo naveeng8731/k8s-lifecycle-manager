@@ -81,7 +81,7 @@ git --version
 git clone https://github.com/naveeng8731/k8s-lifecycle-manager.git
 cd k8s-lifecycle-manager
 python -m pip install -r requirements.txt
-python run.py
+python k8s-install-upgrade.py
 ```
 
 > On Windows use `python` and `python -m pip` — NOT `python3` or `pip3`
@@ -92,7 +92,7 @@ python run.py
 git clone https://github.com/naveeng8731/k8s-lifecycle-manager.git
 cd k8s-lifecycle-manager
 pip3 install -r requirements.txt
-python3 run.py
+python3 k8s-install-upgrade.py
 ```
 
 ### Mac
@@ -101,7 +101,7 @@ python3 run.py
 git clone https://github.com/naveeng8731/k8s-lifecycle-manager.git
 cd k8s-lifecycle-manager
 pip3 install -r requirements.txt
-python3 run.py
+python3 k8s-install-upgrade.py
 ```
 
 ---
@@ -113,13 +113,13 @@ python3 run.py
 | `pip is not recognized` | Python not installed or not in PATH | Reinstall Python — ✔ check **"Add Python to PATH"** |
 | `python is not recognized` | Python not installed or not in PATH | Reinstall Python — ✔ check **"Add Python to PATH"** |
 | `git is not recognized` | Git not installed | Install Git from git-scm.com |
-| `python3 is not recognized` | On Windows use `python` not `python3` | Use `python run.py` instead of `python3 run.py` |
+| `python3 is not recognized` | On Windows use `python` not `python3` | Use `python k8s-install-upgrade.py` instead of `python3 k8s-install-upgrade.py` |
 | `pip3 is not recognized` | On Windows use `python -m pip` | Use `python -m pip install -r requirements.txt` |
 | `ModuleNotFoundError` | pip install not run yet | Run `python -m pip install -r requirements.txt` first |
 
 ---
 
-## What Happens After `python run.py`
+## What Happens After `python k8s-install-upgrade.py`
 
 The script does everything else automatically — no config editing needed:
 
@@ -155,8 +155,8 @@ The script does everything else automatically — no config editing needed:
 
 | Mode | Command | When to Use |
 |---|---|---|
-| **Local** | `python3 run.py` | Run directly on the Kubernetes server |
-| **Remote** | `python run.py` (Windows) | Run from your laptop — wizard handles connection |
+| **Local** | `python3 k8s-install-upgrade.py` | Run directly on the Kubernetes server |
+| **Remote** | `python k8s-install-upgrade.py` (Windows) | Run from your laptop — wizard handles connection |
 
 ---
 
@@ -192,7 +192,7 @@ It is not a Kubernetes tool — just a file reader.
 ```
 Your Laptop (Windows / Linux / Mac)       Remote Linux Server
 ───────────────────────────────────       ──────────────────────────────
-python run.py
+python k8s-install-upgrade.py
   wizard asks: platform / IP / user
   tests SSH connection          ──SSH──►  ubuntu@your-server-ip
   runs Ansible playbooks        ──SSH──►  kubectl get nodes  ← HERE
@@ -208,7 +208,7 @@ python run.py
 ```
 k8s-lifecycle-manager/
 │
-├── run.py                         ← Start here. One command runs everything.
+├── k8s-install-upgrade.py                         ← Start here. One command runs everything.
 ├── requirements.txt               ← pip packages: ansible, requests, pyyaml
 ├── readme.md                      ← This file
 │
@@ -267,11 +267,11 @@ k8s-lifecycle-manager/
 
 ```bash
 # Windows
-python run.py
+python k8s-install-upgrade.py
 python -m pip install -r requirements.txt
 
 # Linux / Mac
-python3 run.py
+python3 k8s-install-upgrade.py
 pip3 install -r requirements.txt
 
 # Git

@@ -146,7 +146,7 @@ def generate_upgrade_report(
         lines.append(f"\n  Cluster is currently stable at: {completed_phases[-1] if completed_phases else 'original version'}")
         lines.append(f"\n  OPTIONS:")
         lines.append(f"    1. Stay at {completed_phases[-1] if completed_phases else 'current'}")
-        lines.append(f"       → Run: python3 run.py  (continues from here next time)")
+        lines.append(f"       → Run: python3 k8s-install-upgrade.py  (continues from here next time)")
         lines.append(f"    2. Rollback to original version")
         lines.append(f"       → Run: ansible-playbook playbooks/rollback.yaml")
         lines.append(f"       NOTE: Binary downgrade must be done manually on server")

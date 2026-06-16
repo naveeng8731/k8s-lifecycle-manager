@@ -684,5 +684,5 @@ def install_fresh_cluster(target_version=None):
         print("\n  To reset and retry:")
         print("    sudo kubeadm reset -f")
         print("    sudo rm -rf /etc/kubernetes /var/lib/etcd ~/.kube")
-        print("    python3 run.py")
+        print("    python3 k8s-install-upgrade.py")
         return False

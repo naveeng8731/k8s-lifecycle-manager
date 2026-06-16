@@ -536,7 +536,7 @@ def get_remote_nodes(config, password=None):
 
 
 # ─────────────────────────────────────────────────────────
-# FULL REMOTE SETUP — called from run.py
+# FULL REMOTE SETUP — called from k8s-install-upgrade.py
 # ─────────────────────────────────────────────────────────
 def setup_remote_connection():
 
@@ -644,22 +644,22 @@ def print_local_setup_instructions():
         print("    git clone https://github.com/naveeng8731/k8s-lifecycle-manager.git")
         print("    cd k8s-lifecycle-manager")
         print("    python -m pip install -r requirements.txt")
-        print("    python run.py\n")
+        print("    python k8s-install-upgrade.py\n")
         print("  ℹ  Use \'python\' and \'python -m pip\' on Windows")
         print("     NOT \'python3\' or \'pip3\'\n")
     elif os_type == "mac":
         print("  ── MAC ──────────────────────────────────────────────")
         print("  brew install python3 git ansible")
         print("  pip3 install -r requirements.txt")
-        print("  python3 run.py\n")
+        print("  python3 k8s-install-upgrade.py\n")
     else:
         print("  ── LINUX ────────────────────────────────────────────")
         print("  sudo apt install python3 python3-pip git ansible -y")
         print("  pip3 install -r requirements.txt")
-        print("  python3 run.py\n")
+        print("  python3 k8s-install-upgrade.py\n")
 
     print("  ── THEN RUN ─────────────────────────────────────────")
-    print("  python3 run.py --mode remote")
+    print("  python3 k8s-install-upgrade.py --mode remote")
     print("  # The wizard will guide you through the connection\n")
     print("  ── SUPPORTED PLATFORMS ──────────────────────────────")
     for k, v in PLATFORMS.items():

@@ -45,7 +45,7 @@ discovery:
 
 # ─────────────────────────────────────────────────────────
 # REMOTE CONNECTION — auto-filled by wizard
-# Run python3 run.py and the wizard will ask for these.
+# Run python3 k8s-install-upgrade.py and the wizard will ask for these.
 # ─────────────────────────────────────────────────────────
 remote:
   host: ""
